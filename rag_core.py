@@ -141,6 +141,44 @@ def list_documents(session_id):
             filenames.add(document.removeprefix("Document filename: "))
     return sorted(filenames, key=str.casefold)
 
+
+def get_documents_meta(session_id):
+    """Per-document chunk counts + char sizes, derived from live collection state."""
+    collection = _get_collection(session_id)
+    stored = collection.get(include=["documents", "metadatas"])
+    stats = {}
+    for document, metadata in zip(stored["documents"], stored["metadatas"]):
+        source = (metadata or {}).get("source")
+        if not source:
+            continue
+        entry = stats.setdefault(source, {"chunks": 0, "size_chars": 0})
+        entry["chunks"] += 1
+        entry["size_chars"] += len(document or "")
+    result = [
+        {
+            "filename": name,
+            "chunks": entry["chunks"],
+            "extension": os.path.splitext(name)[1].lower(),
+            "size_chars": entry["size_chars"],
+        }
+        for name, entry in stats.items()
+    ]
+    return sorted(result, key=lambda item: item["filename"].casefold())
+
+
+def delete_document(session_id, filename):
+    """Remove all chunks for one filename in this session. Returns chunks removed."""
+    collection = _get_collection(session_id)
+    stored = collection.get(include=["documents", "metadatas"])
+    ids = [
+        stored_id
+        for stored_id, metadata in zip(stored["ids"], stored["metadatas"])
+        if (metadata or {}).get("source") == filename
+    ]
+    if ids:
+        collection.delete(ids=ids)
+    return len(ids)
+
 def _chunk_text(text, chunk_size=500, overlap=50):
     words = text.split()
     chunks = []
