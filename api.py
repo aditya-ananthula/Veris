@@ -6,6 +6,7 @@ from uuid import UUID
 import logging
 import rag_core
 import config
+import intel_compare
 
 logging.basicConfig(level=getattr(logging, config.LOG_LEVEL.upper(), logging.INFO))
 logger = logging.getLogger("veris")
@@ -73,6 +74,62 @@ class DocumentMeta(BaseModel):
     chunks: int
     extension: str
     size_chars: int
+
+
+class IntelCompareResponse(BaseModel):
+    matching: bool
+    conflict: bool
+    category: str
+    explanation: str
+    preserved: dict
+
+
+class IntelContradictResponse(BaseModel):
+    conflicts: list[dict]
+
+
+class IntelContradictStatsResponse(BaseModel):
+    session_id: str
+    # stats endpoint shape
+    total: int = 0
+    open: int = 0
+    resolved: int = 0
+    dismissed: int = 0
+    by_category: dict = {}
+    # scan endpoint shape
+    total_compared: int = 0
+    conflicts: int = 0
+    matches: int = 0
+    uncertain: int = 0
+    entity_mismatches: int = 0
+    period_differences: int = 0
+    records: list = []
+
+
+class IntelContradictMeta(BaseModel):
+    conflict_id: str
+    status: str
+    updated_at: float
+
+
+class IntelContradictDetailResponse(BaseModel):
+    conflict_id: str
+    session_id: str
+    category: str
+    subject: str
+    attribute: str
+    value_a: str
+    value_b: str
+    doc_a: str
+    doc_b: str
+    fact_a_id: str
+    fact_b_id: str
+    matching: bool
+    conflict: bool
+    explanation: str
+    status: str
+    evidence_a: str
+    evidence_b: str
 
 
 def _profile_id(value):
@@ -144,6 +201,206 @@ def delete_document(filename: str, session_id: str):
         raise HTTPException(status_code=404, detail="Document not found in this session")
     return {"filename": safe_name, "chunks_removed": removed}
 
+
+# ---- Phase 3: structured intelligence (SQLite sidecar; session-scoped) ----
+
+class IntelDocument(BaseModel):
+    doc_id: str
+    filename: str
+    extension: str
+    version: int
+    status: str
+    extraction_status: str
+    extraction_error: str | None = None
+    chunks: int
+
+
+class IntelFact(BaseModel):
+    fact_id: str
+    doc_id: str
+    filename: str
+    subject: str
+    attribute: str
+    value: str
+    value_type: str
+    unit: str | None = None
+    period: str | None = None
+    entity_id: str | None = None
+    evidence: str
+    char_start: int | None = None
+    char_end: int | None = None
+    status: str
+    validation_notes: str = ""
+
+
+class IntelEntity(BaseModel):
+    entity_id: str
+    canonical_name: str
+    entity_type: str
+    aliases: list[str]
+    status: str
+    fact_count: int = 0
+
+
+class IntelRelationship(BaseModel):
+    rel_id: str
+    src_entity_id: str
+    rel_type: str
+    dst_entity_id: str
+    doc_id: str
+    evidence: str
+    status: str
+
+
+def _phase4():
+    import intel_contradict
+    intel_contradict.init_db()
+    return intel_contradict
+
+
+def _intel() -> object:
+    import intel_store
+    intel_store.init_db()
+    return intel_store
+
+
+@app.get("/intel/contradictions", response_model=IntelContradictResponse)
+def intel_contradictions(session_id: str,
+                         entity_id: str | None = None,
+                         category: str | None = None,
+                         status: str | None = None,
+                         doc_id: str | None = None):
+    contr = _phase4()
+    records = contr.list_contradictions(_profile_id(session_id), status=status)
+    # Client-side filtering for entity_id / category / doc_id
+    filtered = []
+    for r in records:
+        if entity_id and r.get("fact_a_id") != entity_id and r.get("fact_b_id") != entity_id:
+            continue
+        if category and r.get("category") != category:
+            continue
+        if doc_id and r.get("doc_a") != doc_id and r.get("doc_b") != doc_id:
+            continue
+        filtered.append(r)
+    return {"conflicts": filtered}
+
+
+@app.get("/intel/contradictions/stats", response_model=IntelContradictStatsResponse)
+def intel_contradictions_stats(session_id: str):
+    contr = _phase4()
+    return contr.get_contradiction_stats(_profile_id(session_id))
+
+
+@app.post("/intel/contradictions/scan", response_model=IntelContradictStatsResponse)
+def intel_contradictions_scan(session_id: str):
+    contr = _phase4()
+    return contr.scan_contradictions(_profile_id(session_id), use_llm=False)
+
+
+@app.post("/intel/contradictions/refresh", response_model=IntelContradictStatsResponse)
+def intel_contradictions_refresh(session_id: str):
+    contr = _phase4()
+    return contr.scan_contradictions(_profile_id(session_id), use_llm=False)
+
+
+@app.patch("/intel/contradictions/{conflict_id}", response_model=IntelContradictMeta)
+def intel_contradictions_update(conflict_id: str, session_id: str,
+                                payload: dict):
+    contr = _phase4()
+    result = contr.update_contradiction(conflict_id, payload)
+    if not result:
+        raise HTTPException(status_code=404, detail="Contradiction not found")
+    return {"conflict_id": result["conflict_id"], "status": result["status"],
+            "updated_at": result["updated_at"]}
+
+
+@app.get("/intel/contradictions/{conflict_id}", response_model=IntelContradictDetailResponse)
+def intel_contradictions_detail(conflict_id: str, session_id: str):
+    contr = _phase4()
+    detail = contr.get_contradiction(conflict_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Contradiction not found")
+    return detail
+
+
+@app.post("/intel/compare", response_model=IntelCompareResponse)
+def intel_compare_endpoint(payload: dict):
+    try:
+        claim_a = payload.get("claim_a", {})
+        claim_b = payload.get("claim_b", {})
+        result = intel_compare.compare(
+            claim_a, claim_b,
+            source_doc_id_a=payload.get("source_doc_id_a", ""),
+            source_doc_id_b=payload.get("source_doc_id_b", ""),
+            use_llm=payload.get("use_llm", False),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "matching": result.matching,
+        "conflict": result.conflict,
+        "category": result.category,
+        "explanation": result.explanation,
+        "preserved": result.preserved,
+    }
+
+@app.get("/intel/documents", response_model=list[IntelDocument])
+def intel_documents(session_id: str):
+    store = _intel()
+    return [
+        {k: d.get(k) for k in
+         ("doc_id", "filename", "extension", "version", "status",
+          "extraction_status", "extraction_error", "chunks")}
+        for d in store.list_documents(_profile_id(session_id))
+    ]
+
+
+@app.get("/intel/facts", response_model=list[IntelFact])
+def intel_facts(session_id: str, query: str = "", entity_id: str | None = None,
+                doc_id: str | None = None, limit: int = 50):
+    store = _intel()
+    return store.search_facts(_profile_id(session_id), query=query,
+                              entity_id=entity_id, doc_id=doc_id, limit=limit)
+
+
+@app.get("/intel/entities", response_model=list[IntelEntity])
+def intel_entities(session_id: str):
+    store = _intel()
+    return store.list_entities(_profile_id(session_id))
+
+
+@app.get("/intel/relationships", response_model=list[IntelRelationship])
+def intel_relationships(session_id: str):
+    store = _intel()
+    return store.list_relationships(_profile_id(session_id))
+
+
+@app.post("/intel/retry/{doc_id}")
+def intel_retry(doc_id: str, session_id: str):
+    """Re-run extraction for a document using its stored source text.
+    Source text is re-derived from the live Chroma chunks (never stored raw)."""
+    import intel_extract
+    store = _intel()
+    profile_id = _profile_id(session_id)
+    doc = store.get_document(doc_id)
+    if not doc or doc.get("session_id") != profile_id:
+        raise HTTPException(status_code=404, detail="Document not found in this session")
+    collection = rag_core._get_collection(profile_id)
+    stored = collection.get(include=["documents", "metadatas"])
+    parts = [t for t, m in zip(stored["documents"], stored["metadatas"])
+             if (m or {}).get("source") == doc["filename"] and not (t or "").startswith("Document filename: ")]
+    if not parts:
+        raise HTTPException(status_code=409, detail="No indexed text remains for this document")
+    store.set_extraction_state(doc_id, "extracting", None)
+    try:
+        summary = intel_extract.run_extraction(profile_id, doc_id, doc["filename"], "\n".join(parts))
+    except Exception as exc:
+        store.set_extraction_state(doc_id, "failed", f"extraction-error: {exc}"[:500])
+        raise HTTPException(status_code=502, detail="Extraction failed; document remains indexed")
+    if summary.get("status") == "failed":
+        raise HTTPException(status_code=502, detail=summary.get("error", "LLM unavailable; document remains indexed"))
+    return summary
+
 @app.post("/absorb")
 def absorb(file: UploadFile, session_id: str = Form(...)):
     profile_id = _profile_id(session_id)
@@ -159,3 +416,45 @@ def absorb(file: UploadFile, session_id: str = Form(...)):
         raise HTTPException(status_code=413, detail="Documents must be 10 MB or smaller")
     num_chunks = rag_core.ingest_document_bytes(file_bytes, profile_id, doc_id_prefix=filename)
     return {"filename": filename, "chunks_added": num_chunks}
+
+
+class ChunkMeta(BaseModel):
+    id: str
+    text: str
+    docId: str
+    docFilename: str
+    chunkIndex: int
+    embedding: list[float] | None
+
+
+class ChunkCloudResponse(BaseModel):
+    chunks: list[ChunkMeta]
+    total: int
+
+
+@app.get("/intel/chunks", response_model=ChunkCloudResponse)
+def intel_chunks(session_id: str):
+    """Return all chunks with embeddings for a session, used by the Chunk Cloud."""
+    profile_id = _profile_id(session_id)
+    collection = rag_core._get_collection(profile_id)
+    count = collection.count()
+    if count == 0:
+        return {"chunks": [], "total": 0}
+    stored = collection.get(include=["embeddings", "documents", "metadatas"])
+    chunks = []
+    embeddings = stored.get("embeddings") or []
+    documents = stored.get("documents") or []
+    metadatas = stored.get("metadatas") or []
+    ids = stored.get("ids") or []
+    for i, (cid, text, meta) in enumerate(zip(ids, documents, metadatas)):
+        emb = embeddings[i] if i < len(embeddings) else None
+        meta = meta or {}
+        chunks.append({
+            "id": cid,
+            "text": text or "",
+            "docId": str(meta.get("document_key", meta.get("source", ""))),
+            "docFilename": str(meta.get("source", "")),
+            "chunkIndex": i,
+            "embedding": emb,
+        })
+    return {"chunks": chunks, "total": len(chunks)}

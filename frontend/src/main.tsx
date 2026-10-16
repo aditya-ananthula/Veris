@@ -5,6 +5,7 @@ import { AppLayout } from './layouts/AppLayout';
 import { OverviewPage } from './pages/OverviewPage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { IntelligencePage } from './pages/IntelligencePage';
+import { KnowledgePage } from './pages/KnowledgePage';
 import { SettingsPage } from './pages/SettingsPage';
 import './styles/index.css';
 
@@ -16,6 +17,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/" element={<OverviewPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/intelligence" element={<IntelligencePage />} />
+          <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

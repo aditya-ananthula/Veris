@@ -1,4 +1,18 @@
-import type { AskResult, Capabilities, DocumentMeta, Health } from '../types';
+import type {
+  AskResult,
+  Capabilities,
+  DocumentMeta,
+  Health,
+  IntelContradictDetailResponse,
+  IntelContradictMeta,
+  IntelContradictResponse,
+  IntelContradictStatsResponse,
+  IntelCompareResponse,
+  IntelDocument,
+  IntelEntity,
+  IntelFact,
+  IntelRelationship,
+} from '../types';
 
 const RAW_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? '';
 // Empty base = same-origin relative URLs (works with `vite --proxy` in dev).
@@ -68,4 +82,55 @@ export const api = {
       `/documents/${encodeURIComponent(filename)}?session_id=${encodeURIComponent(sessionId)}`,
       { method: 'DELETE' },
     ),
+  intelDocuments: (sessionId: string) =>
+    request<IntelDocument[]>(`/intel/documents?session_id=${encodeURIComponent(sessionId)}`),
+  intelFacts: (sessionId: string, query = '', entityId = '', docId = '') =>
+    request<IntelFact[]>(
+      `/intel/facts?session_id=${encodeURIComponent(sessionId)}&query=${encodeURIComponent(query)}&entity_id=${encodeURIComponent(entityId)}&doc_id=${encodeURIComponent(docId)}`,
+    ),
+  intelEntities: (sessionId: string) =>
+    request<IntelEntity[]>(`/intel/entities?session_id=${encodeURIComponent(sessionId)}`),
+  intelRelationships: (sessionId: string) =>
+    request<IntelRelationship[]>(`/intel/relationships?session_id=${encodeURIComponent(sessionId)}`),
+  intelRetry: (docId: string, sessionId: string) =>
+    request<{ status: string; facts: number }>(`/intel/retry/${encodeURIComponent(docId)}?session_id=${encodeURIComponent(sessionId)}`, {
+      method: 'POST',
+    }),
+  intelCompare: (claimA: unknown, claimB: unknown, sourceDocIdA = '', sourceDocIdB = '', useLlm = false) =>
+    request<IntelCompareResponse>('/intel/compare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ claim_a: claimA, claim_b: claimB, source_doc_id_a: sourceDocIdA, source_doc_id_b: sourceDocIdB, use_llm: useLlm }),
+    }),
+  intelContradictions: (sessionId: string, entityId = '', category = '', status = '', docId = '') =>
+    request<IntelContradictResponse>(`/intel/contradictions?session_id=${encodeURIComponent(sessionId)}&entity_id=${encodeURIComponent(entityId)}&category=${encodeURIComponent(category)}&status=${encodeURIComponent(status)}&doc_id=${encodeURIComponent(docId)}`),
+  intelContradictionsStats: (sessionId: string) =>
+    request<IntelContradictStatsResponse>(`/intel/contradictions/stats?session_id=${encodeURIComponent(sessionId)}`),
+  intelContradictionsScan: (sessionId: string) =>
+    request<IntelContradictStatsResponse>(`/intel/contradictions/scan?session_id=${encodeURIComponent(sessionId)}`, {
+      method: 'POST',
+    }),
+  intelContradictionsRefresh: (sessionId: string) =>
+    request<IntelContradictStatsResponse>(`/intel/contradictions/refresh?session_id=${encodeURIComponent(sessionId)}`, {
+      method: 'POST',
+    }),
+  intelContradictionsUpdate: (conflictId: string, sessionId: string, payload: Record<string, unknown>) =>
+    request<IntelContradictMeta>(`/intel/contradictions/${encodeURIComponent(conflictId)}?session_id=${encodeURIComponent(sessionId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  intelContradictionsDetail: (conflictId: string, sessionId: string) =>
+    request<IntelContradictDetailResponse>(`/intel/contradictions/${encodeURIComponent(conflictId)}?session_id=${encodeURIComponent(sessionId)}`),
+
+  /* ---- Chunk Cloud: raw chunks with embeddings ---- */
+  intelChunks: (sessionId: string) =>
+    request<{ chunks: Array<{
+      id: string;
+      text: string;
+      docId: string;
+      docFilename: string;
+      chunkIndex: number;
+      embedding: number[] | null;
+    }>; total: number }>(`/intel/chunks?session_id=${encodeURIComponent(sessionId)}`),
 };

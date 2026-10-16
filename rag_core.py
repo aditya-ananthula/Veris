@@ -13,27 +13,50 @@ from streamlit.errors import StreamlitSecretNotFoundError
 
 load_dotenv()
 
-DISTANCE_THRESHOLD = 1.5
-GROQ_MODEL = "openai/gpt-oss-20b"
+import config as _veris_config
+
+DISTANCE_THRESHOLD = _veris_config.DISTANCE_THRESHOLD
+GROQ_MODEL = _veris_config.GROQ_MODEL
 groq_client = None
 groq_client_key = None
 
+_chroma_client = None
+_chroma_persist_dir = None
+
+
+def get_chroma_client():
+    """Ephemeral by default (Phase 1-2 behavior). Opt-in persistent via
+    VERIS_CHROMA_DIR. Never deletes existing data; legacy chroma_db/ untouched."""
+    global _chroma_client, _chroma_persist_dir
+    want = (_veris_config.CHROMA_PERSIST_DIR or "").strip()
+    if _chroma_client is None or _chroma_persist_dir != want:
+        if want:
+            os.makedirs(want, exist_ok=True)
+            _chroma_client = chromadb.PersistentClient(path=want)
+        else:
+            _chroma_client = chromadb.EphemeralClient()
+        _chroma_persist_dir = want
+    return _chroma_client
+
+
 client = chromadb.EphemeralClient()
-SESSION_TTL_SECONDS = 60 * 60
+SESSION_TTL_SECONDS = _veris_config.SESSION_TTL_SECONDS
 
 STOP_WORDS = {"a", "am", "are", "do", "does", "i", "is", "know", "me", "my", "the", "what", "which", "with", "you"}
 
 def _get_collection(session_id):
-    """Return this session's in-memory collection and expire inactive sessions."""
+    """Return this session's collection and expire inactive sessions.
+    Uses the configured Chroma client (ephemeral default, persistent opt-in)."""
+    backend = get_chroma_client()
     now = time.time()
-    for collection in client.list_collections():
+    for collection in backend.list_collections():
         if not collection.name.startswith("session_"):
             continue
         last_accessed = (collection.metadata or {}).get("last_accessed", now)
         if now - float(last_accessed) > SESSION_TTL_SECONDS:
-            client.delete_collection(name=collection.name)
+            backend.delete_collection(name=collection.name)
 
-    collection = client.get_or_create_collection(
+    collection = backend.get_or_create_collection(
         name=f"session_{session_id}",
         metadata={"last_accessed": now},
     )
@@ -63,9 +86,27 @@ def _get_groq_client():
     return groq_client
 
 def _chat(messages):
-    client = _get_groq_client()
-    response = client.chat.completions.create(model=GROQ_MODEL, messages=messages)
-    return response.choices[0].message.content
+    """Chat completion with safe failure handling.
+
+    Provider failures (missing key, network errors, timeouts, HTTP errors,
+    malformed or empty responses) are raised as RuntimeError so callers --
+    notably the /ask route and Streamlit app -- can convert them into a safe
+    error instead of a raw 500 stack trace. No secrets surface in error
+    messages, and the failure is never silently converted into an answer.
+    """
+    try:
+        client = _get_groq_client()
+        response = client.chat.completions.create(model=GROQ_MODEL, messages=messages)
+        content = response.choices[0].message.content
+        if content is None:
+            raise RuntimeError("language model returned an empty response")
+        return content
+    except RuntimeError:
+        raise
+    except Exception as exc:  # provider errors, timeouts, malformed responses
+        raise RuntimeError(
+            f"language model request failed: {type(exc).__name__}"
+        ) from exc
 
 def _extract_document_text(file_bytes, extension):
     extension = extension.lower()
@@ -119,6 +160,35 @@ def ingest_document_bytes(file_bytes, session_id, doc_id_prefix="doc"):
         ids=[f"{document_key}_{i}" for i in range(len(chunks))],
         metadatas=[{"source": doc_id_prefix} for _ in chunks],
     )
+    # Phase 3 registry: never breaks RAG — failures are logged, doc stays indexed.
+    try:
+        import intel_store
+        import intel_extract
+        content_hash = hashlib.sha256(file_bytes).hexdigest()
+        doc_id = intel_store.upsert_document(
+            session_id, doc_id_prefix, extension, content_hash, len(chunks),
+            status="indexed", extraction_status="extracting",
+        )
+        # Change detection: supersede prior versions of this filename so
+        # re-ingestion with changed content never leaves stale facts or
+        # vector records behind. Idempotent for identical re-uploads.
+        try:
+            intel_store.supersede_older_versions(session_id, doc_id_prefix, doc_id)
+        except Exception as exc:  # registry issues must not break ingestion
+            import logging
+            logging.getLogger("veris").warning(
+                "supersede older versions failed for %s: %s", doc_id_prefix, exc
+            )
+        if _veris_config.EXTRACTION_ENABLED:
+            try:
+                intel_extract.run_extraction(session_id, doc_id, doc_id_prefix, full_text)
+            except Exception as exc:  # extraction must not break ingestion
+                intel_store.set_extraction_state(doc_id, "failed", f"extraction-error: {exc}"[:500])
+        else:
+            intel_store.set_extraction_state(doc_id, "skipped", "extraction disabled (VERIS_EXTRACTION_ENABLED=off)")
+    except Exception as exc:
+        import logging
+        logging.getLogger("veris").warning("intel registry update failed for %s: %s", doc_id_prefix, exc)
     return len(chunks)
 
 def ingest_document(filepath, session_id, doc_id_prefix="doc"):
@@ -177,6 +247,12 @@ def delete_document(session_id, filename):
     ]
     if ids:
         collection.delete(ids=ids)
+    try:
+        import intel_store
+        intel_store.delete_session_document(session_id, filename)
+    except Exception as exc:
+        import logging
+        logging.getLogger("veris").warning("intel registry delete failed for %s: %s", filename, exc)
     return len(ids)
 
 def _chunk_text(text, chunk_size=500, overlap=50):

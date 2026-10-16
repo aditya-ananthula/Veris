@@ -26,6 +26,13 @@ No workers, queues, auth, or DB besides in-memory Chroma.
 - Sources = 150-char prefixes + validation string; list_documents; FastAPI + Streamlit paths.
 - Groq key from environ -> st.secrets fallback, lazy client.
 - Installed: chromadb 1.5.9, groq 1.7.0, pypdf 6.18.1, streamlit 1.63.0,
+
+## 9. Phase 3 migration strategy
+Extend, don't rewrite. Rag_core.py remains the single ingest/retrieval layer used by
+api.py; the SQLite sidecar is additive (separate schema, WAL, versioned). ChromaDB
+stays the vector layer (default ephemeral, opt-in persistent via VERIS_CHROMA_DIR).
+No agent frameworks; Groq remains the LLM backbone.
+
   fastapi 0.141.1, uvicorn 0.52.4, ollama 0.6.2 — requirements.txt pins only 4.
 
 ## 3. Incomplete / unverified

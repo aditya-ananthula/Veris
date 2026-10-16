@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import '@testing-library/jest-dom';
 import { MessageBubble } from './components/MessageBubble';
 
 describe('MessageBubble', () => {
@@ -25,7 +24,8 @@ describe('MessageBubble', () => {
         }}
       />,
     );
-    expect(screen.getByText('Cited evidence (2)')).toBeDefined();
+    expect(screen.getByText('Cited evidence')).toBeDefined();
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0);
     expect(screen.getByText(/The doc says/)).toBeDefined();
   });
 

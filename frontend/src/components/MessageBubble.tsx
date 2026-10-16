@@ -64,30 +64,35 @@ export function MessageBubble({ msg }: { msg: ChatMessage }) {
               </details>
             )}
             {!!msg.sources?.length && (
-              <div className="mt-2.5 border-t border-ink-700/70 pt-2">
+              <div className="mt-3 border-t border-ink-700/70 pt-2.5">
                 <button
                   onClick={() => setShowSources((v) => !v)}
-                  className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 hover:text-slate-200"
+                  className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 hover:text-accent-300 transition-colors"
                   aria-expanded={showSources}
                 >
-                  <FileSearch size={13} />
-                  Cited evidence ({msg.sources.length})
+                  <FileSearch size={13} className="text-accent-400" />
+                  Cited evidence
+                  <span className="ml-0.5 rounded-full bg-accent-500/15 px-1.5 py-px font-mono text-[10px] text-accent-300">
+                    {msg.sources.length}
+                  </span>
                   <ChevronDown size={13} className={`transition-transform ${showSources ? '' : '-rotate-90'}`} />
                 </button>
                 {showSources && (
-                  <ol className="mt-1.5 flex flex-col gap-1.5">
+                  <ol className="mt-2 flex max-h-64 flex-col gap-1.5 overflow-y-auto pr-1">
                     {msg.sources.map((s, i) => (
                       <li
                         key={i}
-                        className="rounded-md border border-ink-700/60 bg-ink-950 px-2.5 py-1.5 text-xs leading-relaxed text-slate-300"
+                        className="group rounded-md border border-ink-700/60 bg-ink-950 px-2.5 py-2 text-xs leading-relaxed text-slate-300 transition-colors hover:border-accent-500/30 hover:bg-ink-900/60"
                       >
-                        <span className="mr-1.5 font-mono text-[10px] text-accent-400">[{i + 1}]</span>
-                        {s}
+                        <span className="mr-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded bg-accent-500/15 px-1 font-mono text-[10px] text-accent-300 align-text-bottom">
+                          {i + 1}
+                        </span>
+                        <span className="italic text-slate-300/90">{s}</span>
                       </li>
                     ))}
                   </ol>
                 )}
-                <p className="mt-1.5 text-[11px] text-slate-500">
+                <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
                   Cited passages come verbatim from your documents. Interpretive wording outside
                   these quotes is model-generated.
                 </p>
