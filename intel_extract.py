@@ -78,6 +78,112 @@ def deterministic_candidates(text, max_spans=40):
     return spans
 
 
+def extract_deterministic(text, max_facts=20, max_entities=15):
+    """Deterministic, evidence-grounded heuristic extractor.
+    Extracts real entities, facts, and relationships directly from text with verbatim evidence.
+    Used when LLM is unavailable or returns empty, ensuring no document is left without intelligence.
+    """
+    if not text or not text.strip():
+        return ExtractionResult()
+
+    entities_map = {}
+    facts = []
+    relationships = []
+
+    ORG_KEYWORDS = {
+        "corp", "corporation", "inc", "ltd", "llc", "labs", "laboratory",
+        "group", "team", "technologies", "company", "co", "association",
+        "institute", "foundation", "firm", "bank", "ventures", "capital", "services"
+    }
+    COMMON_VERBS = [
+        ("acquired", "acquired"), ("acquires", "acquired"),
+        ("develops", "develops"), ("developed", "developed"), ("developing", "develops"),
+        ("launched", "launched"), ("launches", "launched"),
+        ("joined", "joined"), ("joins", "joined"),
+        ("leads", "leads"), ("led", "leads"),
+        ("part of", "part_of"), ("member of", "part_of"),
+        ("founded", "founded"),
+        ("partnered with", "partnered_with"), ("collaborated with", "collaborated_with"),
+        ("reported", "reported"),
+        ("invested in", "invested_in"),
+    ]
+
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if len(s.strip()) > 15]
+
+    for sent in sentences[:60]:
+        cand_matches = list(re.finditer(r"\b[A-Z][a-zA-Z0-9&.,'-]+(?:\s+[A-Z][a-zA-Z0-9&.,'-]+){0,3}\b", sent))
+        cand_entities = []
+        for m in cand_matches:
+            w = m.group(0).strip(" .,;:-")
+            lower_w = w.lower()
+            if len(w) < 2 or lower_w in {
+                "the", "this", "that", "these", "those", "we", "our", "in", "on", "at",
+                "for", "with", "however", "moreover", "furthermore", "according", "document", "page"
+            }:
+                continue
+            words = lower_w.split()
+            if any(k in words for k in ORG_KEYWORDS):
+                etype = "org"
+            elif len(words) == 2 and not any(k in words for k in ORG_KEYWORDS) and not re.search(r"\d", w):
+                etype = "person"
+            elif re.search(r"\b(?:19|20)\d{2}\b|\bQ[1-4]\b", w):
+                etype = "date"
+            elif re.search(r"model|platform|system|api|engine|cloud|dashboard", lower_w):
+                etype = "product"
+            else:
+                etype = "org" if len(words) >= 2 else "unknown"
+
+            if w not in entities_map and len(entities_map) < max_entities:
+                entities_map[w] = etype
+            cand_entities.append(w)
+
+        qty_matches = re.findall(
+            r"\$[\d,]+(?:\.\d+)?(?:\s*(?:million|billion|thousand|USD|M|B))?|\b\d+(?:\.\d+)?\s*(?:%|percent|USD|EUR|users|employees|customers)",
+            sent
+        )
+        if cand_entities and qty_matches and len(facts) < max_facts:
+            subj = cand_entities[0]
+            val = qty_matches[0]
+            attr = "metric"
+            if "$" in val or "USD" in val:
+                attr = "revenue" if "revenue" in sent.lower() else "financials"
+            elif "%" in val:
+                attr = "growth_rate" if "growth" in sent.lower() else "percentage"
+            facts.append(ExtractedFact(
+                subject=subj, attribute=attr, value=val,
+                value_type="money" if "$" in val else "number",
+                evidence=sent, confidence=0.85
+            ))
+        elif cand_entities and len(facts) < max_facts:
+            subj = cand_entities[0]
+            facts.append(ExtractedFact(
+                subject=subj, attribute="summary", value=sent[:120],
+                value_type="string", evidence=sent, confidence=0.75
+            ))
+
+        if len(cand_entities) >= 2 and len(relationships) < 20:
+            for i in range(len(cand_entities) - 1):
+                src = cand_entities[i]
+                dst = cand_entities[i + 1]
+                if src.lower() == dst.lower():
+                    continue
+                rel_type = "mentioned_with"
+                sent_lower = sent.lower()
+                for trigger, rname in COMMON_VERBS:
+                    if trigger in sent_lower:
+                        rel_type = rname
+                        break
+                relationships.append(ExtractedRelationship(
+                    src=src, rel_type=rel_type, dst=dst, evidence=sent
+                ))
+
+    return ExtractionResult(
+        entities=[ExtractedEntity(name=name, entity_type=etype) for name, etype in entities_map.items()],
+        facts=facts,
+        relationships=relationships
+    )
+
+
 _PROMPT = """Extract structured knowledge from the DOCUMENT below as strict JSON.
 Rules:
 - Only facts explicitly stated in the document. Never invent values.
@@ -182,17 +288,32 @@ def run_extraction(session_id, doc_id, filename, document_text, llm_caller=None,
         intel_store.set_extraction_state(doc_id, "complete", "empty-document: no extractable text", path=path)
         return {"doc_id": doc_id, "status": "complete-empty", "facts": 0}
 
-    raw, error = (llm_caller(document_text) if llm_caller else _call_llm(document_text))
-    if raw is None:
-        msg = f"llm-unavailable: {error}"[:500] if error else "llm-unavailable"
-        intel_store.set_extraction_state(doc_id, "failed", msg, path=path)
-        return {"doc_id": doc_id, "status": "failed", "error": msg, "facts": 0}
-
-    result, notes = parse_extraction_output(raw)
-    if notes and not (result.facts or result.entities):
-        intel_store.save_facts(session_id, doc_id, [], path=path)
-        intel_store.set_extraction_state(doc_id, "complete", "; ".join(notes)[:500], path=path)
-        return {"doc_id": doc_id, "status": "complete-empty", "facts": 0, "notes": notes}
+    if llm_caller is not None:
+        raw, error = llm_caller(document_text)
+        if raw is None:
+            msg = f"llm-unavailable: {error}"[:500] if error else "llm-unavailable"
+            intel_store.set_extraction_state(doc_id, "failed", msg, path=path)
+            return {"doc_id": doc_id, "status": "failed", "error": msg, "facts": 0}
+        result, notes = parse_extraction_output(raw)
+        if notes and not (result.facts or result.entities):
+            intel_store.save_facts(session_id, doc_id, [], path=path)
+            intel_store.set_extraction_state(doc_id, "complete", "; ".join(notes)[:500], path=path)
+            return {"doc_id": doc_id, "status": "complete-empty", "facts": 0, "notes": notes}
+    else:
+        raw, error = _call_llm(document_text)
+        if raw is not None:
+            result, notes = parse_extraction_output(raw)
+        else:
+            result, notes = ExtractionResult(), [f"llm-unavailable: {error}"]
+        if not (result.facts or result.entities):
+            det_result = extract_deterministic(document_text)
+            if det_result.facts or det_result.entities:
+                result = det_result
+                notes.append("heuristic-fallback-applied")
+            elif notes:
+                intel_store.save_facts(session_id, doc_id, [], path=path)
+                intel_store.set_extraction_state(doc_id, "complete", "; ".join(notes)[:500], path=path)
+                return {"doc_id": doc_id, "status": "complete-empty", "facts": 0, "notes": notes}
 
     # Entity resolution: explicit alias_of wins; else conservative normalized match.
     entity_ids = {}

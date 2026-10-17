@@ -44,17 +44,17 @@ export function MeshGradient({ className = '', blobs = 4 }: MeshGradientProps) {
         }}
       />
 
-      {/* Cursor-following blurry blobs */}
+      {/* Cursor-following blurry blobs — kept small & dim for readability */}
       {positions.map((pos, i) => {
         const dx = mouse.x / window.innerWidth - pos.x / 100;
         const dy = mouse.y / window.innerHeight - pos.y / 100;
-        const shiftX = dx * 15;
-        const shiftY = dy * 15;
+        const shiftX = dx * 8;
+        const shiftY = dy * 8;
         const colors = [
-          'hsla(258, 80%, 62%, 0.34)',
-          'hsla(271, 76%, 60%, 0.30)',
-          'hsla(160, 60%, 45%, 0.26)',
-          'hsla(243, 68%, 64%, 0.28)',
+          'hsla(258, 80%, 62%, 0.18)',
+          'hsla(271, 76%, 60%, 0.14)',
+          'hsla(160, 60%, 45%, 0.12)',
+          'hsla(243, 68%, 64%, 0.14)',
         ];
         return (
           <div
@@ -63,15 +63,32 @@ export function MeshGradient({ className = '', blobs = 4 }: MeshGradientProps) {
             style={{
               left: `${pos.x + shiftX}%`,
               top: `${pos.y + shiftY}%`,
-              width: '40%',
-              height: '40%',
+              width: '28%',
+              height: '28%',
               backgroundColor: colors[i % colors.length],
-              filter: 'blur(100px)',
-              opacity: 0.6,
+              filter: 'blur(90px)',
+              opacity: 0.5,
             }}
           />
         );
       })}
+
+      {/* Restrained luminous particles */}
+      <div className="absolute inset-0" style={{ opacity: 0.5 }}>
+        {Array.from({ length: 28 }, (_, i) => {
+          const left = (i * 37 + 13) % 100;
+          const top = (i * 53 + 29) % 100;
+          const sz = (i % 3) + 1;
+          const o = 0.15 + ((i * 7) % 10) / 40;
+          return (
+            <span
+              key={i}
+              className="absolute rounded-full bg-white"
+              style={{ left: `${left}%`, top: `${top}%`, width: sz, height: sz, opacity: o, boxShadow: '0 0 6px rgba(165,180,252,0.8)' }}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }

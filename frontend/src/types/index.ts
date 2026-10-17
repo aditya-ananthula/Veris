@@ -94,6 +94,22 @@ export interface IntelCompareResponse {
   preserved: Record<string, unknown>;
 }
 
+export interface ComparedClaimPair {
+  claim_a: IntelFact;
+  claim_b: IntelFact;
+  explanation: string;
+}
+
+export interface IntelCompareDocsResponse {
+  doc_a: string;
+  doc_b: string;
+  matches: ComparedClaimPair[];
+  conflicts: ComparedClaimPair[];
+  unique_a: IntelFact[];
+  unique_b: IntelFact[];
+  summary: string;
+}
+
 export interface IntelContradictResponse {
   conflicts: Record<string, unknown>[];
 }
@@ -146,6 +162,63 @@ export interface IntelContradictDetailResponse {
   status: string;
   evidence_a: string;
   evidence_b: string;
+}
+
+/* ---- Knowledge graph / stats types ---- */
+
+export interface IntelStatsResponse {
+  documents: number;
+  chunks: number;
+  entities: number;
+  facts: number;
+  relationships: number;
+}
+
+export interface DocumentGraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+  rel_type: string;
+  evidence: string;
+}
+
+export interface IntelDocumentGraphResponse {
+  documents: IntelDocument[];
+  edges: DocumentGraphEdge[];
+}
+
+export interface EntityFact {
+  fact_id: string;
+  doc_id: string;
+  filename: string;
+  subject: string;
+  attribute: string;
+  value: string;
+  value_type: string;
+  unit: string | null;
+  period: string | null;
+  evidence: string;
+  status: string;
+}
+
+export interface EntityRelated {
+  entity_id: string;
+  canonical_name: string;
+  entity_type: string;
+  aliases: string[];
+  status: string;
+}
+
+export interface IntelEntityDetailResponse {
+  entity_id: string;
+  canonical_name: string;
+  entity_type: string;
+  aliases: string[];
+  status: string;
+  fact_count: number;
+  facts: EntityFact[];
+  related_entities: EntityRelated[];
+  related_count: number;
 }
 
 /* ---- Chart / dashboard types ---- */

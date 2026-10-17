@@ -248,10 +248,97 @@ body {
   max-width: 140px;
 }
 
-/* ---- Chunk Cloud canvas container ---- */
-#chunk-cloud-canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-  background: rgba(3, 7, 18, 0.4);
+/* ---- Veris showcase shell ---- */
+.veris-sidebar {
+  background: linear-gradient(180deg, rgba(16,11,34,0.92), rgba(9,7,20,0.94));
+  border-right: 1px solid rgba(139,92,246,0.18);
+  backdrop-filter: blur(18px);
 }
+.veris-logo-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  background: radial-gradient(120% 120% at 30% 20%, rgba(167,139,250,0.5), rgba(34,211,238,0.25) 60%, rgba(10,8,25,0.6));
+  border: 1px solid rgba(167,139,250,0.45);
+  box-shadow: 0 0 18px rgba(139,92,246,0.45), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+.veris-nav-item {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  border-radius: 12px; padding: 9px 12px; color: #9aa0b8;
+  border: 1px solid transparent; transition: all .2s ease; overflow: hidden;
+}
+.veris-nav-item:hover { background: rgba(139,92,246,0.08); color: #e6e2f5; border-color: rgba(167,139,250,0.18); }
+.veris-nav-item-active {
+  background: linear-gradient(135deg, rgba(139,92,246,0.28), rgba(109,88,246,0.16));
+  border-color: rgba(167,139,250,0.5) !important; color: #fff !important;
+  box-shadow: 0 0 22px rgba(139,92,246,0.35), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.veris-nav-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: inherit;
+}
+.veris-nav-item-active .veris-nav-icon { background: rgba(139,92,246,0.25); border-color: rgba(167,139,250,0.4); }
+.veris-nav-glow { position: absolute; right: 8px; width: 6px; height: 6px; border-radius: 999px; background: #22d3ee; box-shadow: 0 0 10px #22d3ee; }
+.veris-topbar {
+  background: linear-gradient(180deg, rgba(14,10,28,0.85), rgba(14,10,28,0.65));
+  border-bottom: 1px solid rgba(139,92,246,0.16); backdrop-filter: blur(16px);
+}
+.veris-search {
+  display: flex; align-items: center; gap: 8px; flex: 1; max-width: 460px;
+  background: rgba(8,6,18,0.8); border: 1px solid rgba(139,92,246,0.25);
+  border-radius: 10px; padding: 7px 12px; color: #8a86a3; font-size: 13px;
+}
+.veris-search input { background: transparent; border: 0; outline: 0; flex: 1; color: #e8e4f5; font-size: 13px; }
+.veris-kbd { font-size: 10px; border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; padding: 1px 6px; color: #8a86a3; background: rgba(255,255,255,0.05); }
+.veris-workspace {
+  display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #d6cdf5;
+  background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 10px; padding: 7px 12px;
+}
+.veris-avatar { width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #a78bfa, #22d3ee); color: #0a0817; font-weight: 700; font-size: 12px;
+  border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 0 14px rgba(139,92,246,0.5); }
+.veris-panel {
+  position: relative; border-radius: 14px; overflow: hidden;
+  background: linear-gradient(165deg, rgba(24,17,48,0.78), rgba(9,7,20,0.82));
+  border: 1px solid rgba(139,92,246,0.22);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+  backdrop-filter: blur(18px);
+}
+.veris-panel-neon { border-color: rgba(168,85,247,0.55); box-shadow: 0 0 0 1px rgba(168,85,247,0.25), 0 0 30px rgba(168,85,247,0.25), 0 8px 40px rgba(0,0,0,0.5); }
+.veris-cap-card { transition: all .25s ease; }
+.veris-cap-card:hover { transform: translateY(-2px); border-color: rgba(34,211,238,0.45); box-shadow: 0 0 26px rgba(34,211,238,0.2), 0 8px 40px rgba(0,0,0,0.5); }
+.veris-cap-icon { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; border: 1px solid rgba(255,255,255,0.14); }
+.veris-btn-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9 55%, #22d3ee 130%);
+  color: #fff; font-size: 13px; font-weight: 600; border-radius: 9px; padding: 8px 16px;
+  border: 1px solid rgba(167,139,250,0.5); box-shadow: 0 0 20px rgba(139,92,246,0.45), inset 0 1px 0 rgba(255,255,255,0.2);
+  transition: all .2s ease; cursor: pointer;
+}
+.veris-btn-primary:hover { filter: brightness(1.12); }
+.veris-btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+.veris-btn-ghost { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #c9c3ea;
+  border: 1px solid rgba(139,92,246,0.3); background: rgba(139,92,246,0.08); border-radius: 9px; padding: 7px 12px; transition: all .2s; cursor: pointer; }
+.veris-btn-ghost:hover { background: rgba(139,92,246,0.16); color: #fff; }
+.veris-tab { font-size: 12px; padding: 6px 12px; border-radius: 8px; color: #8a86a3; border: 1px solid transparent; cursor: pointer; transition: all .2s; background: transparent; }
+.veris-tab:hover { color: #d6cdf5; background: rgba(139,92,246,0.08); }
+.veris-tab-active { color: #fff !important; background: linear-gradient(135deg, rgba(139,92,246,0.35), rgba(109,88,246,0.2)) !important; border-color: rgba(167,139,250,0.5) !important; box-shadow: 0 0 14px rgba(139,92,246,0.35); }
+.veris-pill { font-size: 11px; border: 1px solid rgba(139,92,246,0.3); background: rgba(10,8,25,0.6); color: #b9b0dd; border-radius: 999px; padding: 6px 12px; cursor: pointer; transition: all .2s; text-align: left; }
+.veris-pill:hover { border-color: rgba(34,211,238,0.5); color: #fff; background: rgba(34,211,238,0.08); }
+.veris-input { background: rgba(5,3,14,0.8); border: 1px solid rgba(139,92,246,0.25); border-radius: 10px; color: #ece8fa; font-size: 13px; padding: 8px 12px; outline: none; width: 100%; }
+.veris-input:focus { border-color: rgba(34,211,238,0.6); box-shadow: 0 0 0 2px rgba(34,211,238,0.15); }
+.veris-input::placeholder { color: #5d5878; }
+select.veris-input { appearance: none; cursor: pointer; }
+select.veris-input option { background: #14102a; }
+.veris-status { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; border-radius: 999px; padding: 3px 9px; border: 1px solid; white-space: nowrap; }
+.veris-status-completed { color: #6ee7b7; border-color: rgba(52,211,153,0.4); background: rgba(52,211,153,0.1); }
+.veris-status-processing { color: #67e8f9; border-color: rgba(34,211,238,0.4); background: rgba(34,211,238,0.1); }
+.veris-status-failed { color: #fca5a5; border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.1); }
+.veris-doc-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; transition: background .15s; }
+.veris-doc-row:hover { background: rgba(139,92,246,0.07); }
+.veris-file-ic { width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; flex-shrink: 0; }
+.veris-orb-wrap { position: relative; flex-shrink: 0; }
+.veris-step-num { width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0;
+  background: linear-gradient(135deg, #8b5cf6, #22d3ee); color: #fff; box-shadow: 0 0 12px rgba(139,92,246,0.5); }
+.veris-legend-dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; box-shadow: 0 0 8px currentColor; flex-shrink: 0; }
+

@@ -433,7 +433,7 @@ class ChunkCloudResponse(BaseModel):
 
 
 @app.get("/intel/chunks", response_model=ChunkCloudResponse)
-def intel_chunks(session_id: str):
+def intel_chunks(session_id: str, doc_id: str | None = None):
     """Return all chunks with embeddings for a session, used by the Chunk Cloud."""
     profile_id = _profile_id(session_id)
     collection = rag_core._get_collection(profile_id)
@@ -442,19 +442,183 @@ def intel_chunks(session_id: str):
         return {"chunks": [], "total": 0}
     stored = collection.get(include=["embeddings", "documents", "metadatas"])
     chunks = []
-    embeddings = stored.get("embeddings") or []
+    raw_emb = stored.get("embeddings")
+    embeddings = raw_emb.tolist() if hasattr(raw_emb, "tolist") else (list(raw_emb) if raw_emb else [])
     documents = stored.get("documents") or []
     metadatas = stored.get("metadatas") or []
     ids = stored.get("ids") or []
     for i, (cid, text, meta) in enumerate(zip(ids, documents, metadatas)):
         emb = embeddings[i] if i < len(embeddings) else None
+        if emb is not None and hasattr(emb, "tolist"):
+            emb = emb.tolist()
+        elif emb is not None:
+            emb = list(emb)
         meta = meta or {}
+        doc_key = str(meta.get("document_key", meta.get("source", "")))
+        source_name = str(meta.get("source", ""))
+        if doc_id and doc_id not in (doc_key, source_name):
+            continue
         chunks.append({
             "id": cid,
             "text": text or "",
-            "docId": str(meta.get("document_key", meta.get("source", ""))),
-            "docFilename": str(meta.get("source", "")),
+            "docId": doc_key,
+            "docFilename": source_name,
             "chunkIndex": i,
             "embedding": emb,
         })
     return {"chunks": chunks, "total": len(chunks)}
+
+# ---- Knowledge graph: stats, document graph, entity detail ----
+
+class IntelStatsResponse(BaseModel):
+    documents: int
+    chunks: int
+    entities: int
+    facts: int
+    relationships: int
+
+
+class DocumentGraphEdge(BaseModel):
+    source: str
+    target: str
+    weight: int
+    similarity: float = 0.5
+    rel_type: str
+    evidence: str
+
+
+class IntelDocumentGraphItem(IntelDocument):
+    key_topics: list[str] = []
+
+
+class IntelDocumentGraphResponse(BaseModel):
+    documents: list[IntelDocumentGraphItem]
+    edges: list[DocumentGraphEdge]
+
+
+class EntityFact(BaseModel):
+    fact_id: str
+    doc_id: str
+    filename: str
+    subject: str
+    attribute: str
+    value: str
+    value_type: str
+    unit: str | None = None
+    period: str | None = None
+    evidence: str
+    status: str
+
+
+class EntityRelated(BaseModel):
+    entity_id: str
+    canonical_name: str
+    entity_type: str
+    aliases: list[str]
+    status: str
+
+
+class IntelEntityDetailResponse(BaseModel):
+    entity_id: str
+    canonical_name: str
+    entity_type: str
+    aliases: list[str]
+    status: str
+    fact_count: int
+    facts: list[EntityFact]
+    related_entities: list[EntityRelated]
+    related_count: int
+
+
+@app.get("/intel/stats", response_model=IntelStatsResponse)
+def intel_stats(session_id: str):
+    store = _intel()
+    return store.get_stats(_profile_id(session_id))
+
+
+@app.get("/intel/document-graph", response_model=IntelDocumentGraphResponse)
+def intel_document_graph(session_id: str):
+    store = _intel()
+    result = store.get_document_graph(_profile_id(session_id))
+    return result
+
+
+@app.get("/intel/entity/{entity_id}", response_model=IntelEntityDetailResponse)
+def intel_entity_detail(entity_id: str, session_id: str):
+    store = _intel()
+    detail = store.get_entity_detail(_profile_id(session_id), entity_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Entity not found in this session")
+    return detail
+
+
+class CompareDocsRequest(BaseModel):
+    session_id: str
+    doc_a: str
+    doc_b: str
+
+
+class CompareDocsResponse(BaseModel):
+    doc_a: str
+    doc_b: str
+    matches: list[dict]
+    conflicts: list[dict]
+    unique_a: list[dict]
+    unique_b: list[dict]
+    summary: str
+
+
+@app.post("/intel/compare-documents", response_model=CompareDocsResponse)
+def intel_compare_documents(payload: CompareDocsRequest):
+    store = _intel()
+    profile_id = _profile_id(payload.session_id)
+    facts_a = store.search_facts(profile_id, doc_id=payload.doc_a, limit=100)
+    facts_b = store.search_facts(profile_id, doc_id=payload.doc_b, limit=100)
+    # Also attempt match by filename if doc_id was passed as filename
+    if not facts_a:
+        all_facts = store.search_facts(profile_id, limit=200)
+        facts_a = [f for f in all_facts if f.get("filename") == payload.doc_a]
+    if not facts_b:
+        all_facts = store.search_facts(profile_id, limit=200)
+        facts_b = [f for f in all_facts if f.get("filename") == payload.doc_b]
+
+    matches = []
+    conflicts = []
+    used_b = set()
+
+    for fa in facts_a:
+        matched = False
+        for fb in facts_b:
+            if fb["fact_id"] in used_b:
+                continue
+            # Compare claims with same subject or attribute
+            same_subj = fa.get("subject", "").lower() == fb.get("subject", "").lower()
+            same_attr = fa.get("attribute", "").lower() == fb.get("attribute", "").lower()
+            if same_subj or same_attr:
+                res = intel_compare.compare(fa, fb, source_doc_id_a=payload.doc_a, source_doc_id_b=payload.doc_b)
+                if res.matching:
+                    matches.append({"claim_a": fa, "claim_b": fb, "explanation": res.explanation})
+                    used_b.add(fb["fact_id"])
+                    matched = True
+                    break
+                elif res.conflict:
+                    conflicts.append({"claim_a": fa, "claim_b": fb, "explanation": res.explanation})
+                    used_b.add(fb["fact_id"])
+                    matched = True
+                    break
+        if not matched:
+            pass
+
+    unique_a = [f for f in facts_a if not any(m["claim_a"]["fact_id"] == f["fact_id"] for m in matches + conflicts)]
+    unique_b = [f for f in facts_b if f["fact_id"] not in used_b]
+
+    summary = f"Compared {len(facts_a)} claims from {payload.doc_a} and {len(facts_b)} claims from {payload.doc_b}. Found {len(matches)} agreements and {len(conflicts)} conflicting statements."
+    return {
+        "doc_a": payload.doc_a,
+        "doc_b": payload.doc_b,
+        "matches": matches,
+        "conflicts": conflicts,
+        "unique_a": unique_a,
+        "unique_b": unique_b,
+        "summary": summary,
+    }

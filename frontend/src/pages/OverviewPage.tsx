@@ -1,146 +1,110 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, FileText, FlaskConical, Network } from 'lucide-react';
+import { CloudUpload } from 'lucide-react';
 import { api } from '../services/api';
 import { useSession } from '../hooks/useSession';
-import { Card, EmptyState, ErrorBanner, SectionHeader, Button, StatCard, Badge } from '../components/ui';
-import { DonutChart, BarChart } from '../components/charts';
+import { AiOrb } from '../components/AiOrb';
 import type { Capabilities, DocumentMeta } from '../types';
 
-const EXT_LABEL: Record<string, string> = { pdf: 'PDF', docx: 'DOCX', txt: 'TXT', md: 'Markdown' };
+const CAPS = [
+  { icon: 'Ask', t: 'Ask', d: 'Get grounded answers with source citations.' },
+  { icon: 'Cmp', t: 'Compare', d: 'Find differences, similarities and conflicts.' },
+  { icon: 'Exp', t: 'Explore', d: 'Visualize connections across documents.' },
+  { icon: 'New', t: 'Discover', d: 'Extract key entities and relationships.' },
+];
 
 export function OverviewPage() {
   const { sessionId } = useSession();
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [docs, setDocs] = useState<DocumentMeta[]>([]);
-  const [error, setError] = useState('');
-
-  const load = async (sid: string) => {
-    try {
-      setError('');
-      const [c, m] = await Promise.all([api.capabilities(), api.documentsMeta(sid)]);
-      setCaps(c);
-      setDocs(m);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load workspace.');
-    }
-  };
-
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (sessionId) void load(sessionId);
+    if (!sessionId) return;
+    Promise.all([api.capabilities(), api.documentsMeta(sessionId)])
+      .then(([c, m]) => { setCaps(c); setDocs(m); }).catch(() => {});
   }, [sessionId]);
-
-  const totalChunks = docs.reduce((n, d) => n + d.chunks, 0);
-  const groqOk = caps?.groq_configured ?? false;
-
-  const extCounts = docs.reduce<Record<string, number>>((acc, d) => {
-    acc[d.extension] = (acc[d.extension] ?? 0) + 1;
-    return acc;
-  }, {});
-  const extSeries = Object.entries(extCounts).map(([ext, value]) => ({
-    label: EXT_LABEL[ext] ?? ext.toUpperCase(),
-    value,
-    color: ext === 'pdf' ? '#22d3ee' : ext === 'docx' ? '#a855f7' : ext === 'txt' ? '#f472b6' : '#34d399',
-  }));
-  const docsTotal = docs.length;
-  const topDocs = [...docs].sort((a, b) => b.chunks - a.chunks).slice(0, 6);
-  const barSeries = topDocs.map((d) => ({
-    label: d.filename.length > 14 ? d.filename.slice(0, 14) + '…' : d.filename,
-    value: d.chunks,
-    color: '#22d3ee',
-  }));
-
+  const upload = async (files: FileList | null) => {
+    if (!files || !files.length || !sessionId) return;
+    setBusy(true); setMsg('');
+    try {
+      for (const f of Array.from(files)) {
+        const r = await api.absorb(f, sessionId);
+        setMsg('Added ' + r.filename + ' (' + r.chunks_added + ' chunks).');
+      }
+      setDocs(await api.documentsMeta(sessionId));
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Upload failed.'); }
+    finally { setBusy(false); }
+  };
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight text-slate-100">From documents to intelligence</h2>
-        <p className="mt-1 max-w-2xl text-sm text-slate-400">
-          Upload documents, then ask grounded questions with cited passages and verification.
-          Everything below reflects live backend state — no sample data.
-        </p>
-      </div>
-      {error && <ErrorBanner message={error} onRetry={() => sessionId && void load(sessionId)} />}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Documents" value={docsTotal.toString()} subtitle="Uploaded files" />
-        <StatCard title="Chunks" value={totalChunks.toString()} subtitle="Indexed segments" />
-        <StatCard title="Session" value={sessionId?.slice(-8) ?? '—'} subtitle="Active session" />
-        <StatCard
-          title="Backend"
-          value={groqOk ? 'Connected' : 'Offline'}
-          subtitle={groqOk ? 'LLM provider ready' : 'Configure GROQ_API_KEY'}
-          trend={<Badge variant={groqOk ? 'success' : 'error'}>{groqOk ? 'Online' : 'Offline'}</Badge>}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 flex flex-col gap-6">
-          <Card className="p-5">
-            <SectionHeader title="Add documents" hint="Upload from the Documents workspace" />
-            <div className="mt-3">
-              <p className="mt-2 text-[13px] leading-relaxed text-slate-400">All uploads live in one place. Drop PDF, DOCX, TXT, or Markdown files to embed and index them.</p>
-              <Link
-                to="/documents"
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-accent-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-400 hover:scale-[1.02] transition-transform"
-              >
-                Go to Documents <ArrowRight size={15} />
-              </Link>
+    <div className="flex flex-col gap-4">
+      <div className="veris-panel p-6 sm:p-7">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[26px] sm:text-[30px] font-semibold leading-tight tracking-tight text-white">
+              Turn your documents<br />into intelligence.
+            </h1>
+            <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-slate-400">
+              Upload, explore, ask questions, compare sources, and uncover hidden connections.
+            </p>
+            <div className="mt-5 grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+              {CAPS.map((c) => (
+                <div key={c.t} className="veris-panel veris-cap-card p-3">
+                  <span className="veris-cap-icon">{c.icon}</span>
+                  <p className="mt-2 text-[13px] font-semibold text-white">{c.t}</p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{c.d}</p>
+                </div>
+              ))}
             </div>
-          </Card>
-          <Card className="p-5">
-            <SectionHeader title="Quick actions" hint="Move to another workspace area" />
-            <div className="mt-3 flex flex-col gap-2">
-              <Button variant="default" disabled={docs.length === 0} className="w-full">
-                <FlaskConical size={15} className="mr-2" /> Start analyzing
-              </Button>
-              <Link to="/documents" className="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-slate-100 hover:border-slate-500 transition-all">
-                <FileText size={15} /> Manage library
-              </Link>
-              <Link to="/knowledge" className="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-slate-100 hover:border-slate-500 transition-all">
-                <Network size={15} /> Explore knowledge graph
-              </Link>
-            </div>
-          </Card>
+          </div>
+          <div className="flex shrink-0 items-center justify-center gap-3">
+            <AiOrb size={185} />
+            <p className="hidden text-right text-[11px] leading-relaxed text-slate-500 lg:block">
+              More<br />Clarity.<br />Deeper<br />Understanding.
+            </p>
+          </div>
         </div>
-        <div className="lg:col-span-2 flex flex-col gap-6">
-          <Card className="p-5">
-            <div className="flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-sm font-medium text-slate-100">
-                <FileText size={16} className="text-accent-400" /> Recent documents
-              </h3>
-              <Link to="/documents" className="inline-flex items-center gap-1 text-xs text-accent-400 hover:text-accent-500">
-                Open library <ArrowRight size={13} />
-              </Link>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="veris-panel veris-panel-neon p-6 text-center">
+          <CloudUpload size={30} className="mx-auto text-violet-300" />
+          <p className="mt-2 text-[13.5px] font-semibold text-white">Upload your documents to get started</p>
+          <p className="mx-auto mt-1 max-w-xs text-[11.5px] text-slate-400">
+            Drag and drop files here or click to browse.
+          </p>
+          <button className="veris-btn-primary mt-4" disabled={busy} onClick={() => fileRef.current?.click()}>
+            {busy ? 'Uploading...' : 'Browse Files'}
+          </button>
+          <input ref={fileRef} type="file" multiple className="hidden"
+            accept={caps?.supported_extensions.join(',')}
+            onChange={(e) => { void upload(e.target.files); e.target.value = ''; }} />
+          {msg && <p className="mt-3 text-[11.5px] text-cyan-300">{msg}</p>}
+          {docs.length > 0 && <p className="mt-1 text-[11px] text-slate-500">{docs.length} documents in workspace</p>}
+        </div>
+        <div className="veris-panel p-6">
+          <p className="text-[13px] font-semibold text-white">See what you can do</p>
+          <div className="mt-4 flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <span className="veris-step-num">1</span>
+              <div><p className="text-[13px] font-semibold text-slate-100">Upload documents</p>
+              <p className="text-[11.5px] text-slate-400">Add your research, reports or notes</p></div>
             </div>
-            <div className="mt-3">
-              {docs.length === 0 ? (
-                <EmptyState title="No documents yet" hint="Upload a PDF, DOCX, TXT, or Markdown file to start. Your collection is scoped to this browser session." />
-              ) : (
-                <ul className="divide-y divide-slate-700/40">
-                  {docs.slice(-5).reverse().map((d) => (
-                    <li key={d.filename} className="flex items-center justify-between py-2 text-sm hover-expand group">
-                      <span className="truncate text-slate-200">{d.filename}</span>
-                      <span className="ml-3 shrink-0 text-xs text-slate-400">{d.chunks} chunks</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {docs.length > 0 && (
-                <Link to="/intelligence" className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-accent-500 px-3.5 py-2 text-sm font-medium text-white hover:bg-accent-400 hover:scale-[1.02] transition-transform">
-                  <FlaskConical size={15} /> Start analyzing
-                </Link>
-              )}
+            <div className="flex items-start gap-3">
+              <span className="veris-step-num">2</span>
+              <div><p className="text-[13px] font-semibold text-slate-100">We process and analyze</p>
+              <p className="text-[11.5px] text-slate-400">Extract text, create chunks, generate embeddings</p></div>
             </div>
-          </Card>
-          <div className="grid grid-cols-2 gap-4">
-            <Card className="p-5">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Document types</h3>
-              <DonutChart series={extSeries} totalLabel='Documents' totalValue={docs.length} height={180} />
-            </Card>
-            <Card className="p-5">
-              <h3 className="text-xs font-medium uppercase tracking-wider text-slate-400 mb-3">Top documents by chunks</h3>
-              <BarChart series={barSeries} height={220} />
-            </Card>
+            <div className="flex items-start gap-3">
+              <span className="veris-step-num">3</span>
+              <div><p className="text-[13px] font-semibold text-slate-100">Explore and ask</p>
+              <p className="text-[11.5px] text-slate-400">Visualize, compare and get insights with sources.</p></div>
+            </div>
+          </div>
+          <div className="mt-5 flex gap-2">
+            <Link to="/documents" className="veris-btn-ghost">Documents</Link>
+            <Link to="/intelligence" className="veris-btn-ghost">Intelligence</Link>
+            <Link to="/knowledge" className="veris-btn-ghost">Knowledge</Link>
           </div>
         </div>
       </div>

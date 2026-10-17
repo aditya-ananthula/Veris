@@ -7,11 +7,15 @@ import type {
   IntelContradictMeta,
   IntelContradictResponse,
   IntelContradictStatsResponse,
+  IntelCompareDocsResponse,
   IntelCompareResponse,
   IntelDocument,
+  IntelDocumentGraphResponse,
   IntelEntity,
+  IntelEntityDetailResponse,
   IntelFact,
   IntelRelationship,
+  IntelStatsResponse,
 } from '../types';
 
 const RAW_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? '';
@@ -102,6 +106,12 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ claim_a: claimA, claim_b: claimB, source_doc_id_a: sourceDocIdA, source_doc_id_b: sourceDocIdB, use_llm: useLlm }),
     }),
+  intelCompareDocuments: (sessionId: string, docA: string, docB: string) =>
+    request<IntelCompareDocsResponse>('/intel/compare-documents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, doc_a: docA, doc_b: docB }),
+    }),
   intelContradictions: (sessionId: string, entityId = '', category = '', status = '', docId = '') =>
     request<IntelContradictResponse>(`/intel/contradictions?session_id=${encodeURIComponent(sessionId)}&entity_id=${encodeURIComponent(entityId)}&category=${encodeURIComponent(category)}&status=${encodeURIComponent(status)}&doc_id=${encodeURIComponent(docId)}`),
   intelContradictionsStats: (sessionId: string) =>
@@ -122,6 +132,14 @@ export const api = {
     }),
   intelContradictionsDetail: (conflictId: string, sessionId: string) =>
     request<IntelContradictDetailResponse>(`/intel/contradictions/${encodeURIComponent(conflictId)}?session_id=${encodeURIComponent(sessionId)}`),
+
+  /* ---- Knowledge graph / stats ---- */
+  intelStats: (sessionId: string) =>
+    request<IntelStatsResponse>(`/intel/stats?session_id=${encodeURIComponent(sessionId)}`),
+  intelDocumentGraph: (sessionId: string) =>
+    request<IntelDocumentGraphResponse>(`/intel/document-graph?session_id=${encodeURIComponent(sessionId)}`),
+  intelEntityDetail: (sessionId: string, entityId: string) =>
+    request<IntelEntityDetailResponse>(`/intel/entity/${encodeURIComponent(entityId)}?session_id=${encodeURIComponent(sessionId)}`),
 
   /* ---- Chunk Cloud: raw chunks with embeddings ---- */
   intelChunks: (sessionId: string) =>

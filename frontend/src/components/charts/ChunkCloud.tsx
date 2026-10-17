@@ -93,7 +93,8 @@ export function ChunkCloud({ sessionId, documents, height = 460, className = '' 
         return;
       }
       const proj = projectTo2D(raw.map((c) => c.embedding as number[]));
-      const docIndex = new Map(documents.map((d, i) => [d.doc_id, i]));
+      const docIndex = new Map<string, number>();
+      documents.forEach((d, i) => { docIndex.set(d.doc_id, i); if (d.filename && !docIndex.has(d.filename)) docIndex.set(d.filename, i); });
       const built: ChunkPoint[] = raw.map((c, i) => ({
         id: c.id,
         chunkId: c.id,
@@ -103,7 +104,7 @@ export function ChunkCloud({ sessionId, documents, height = 460, className = '' 
         text: c.text,
         x: proj[i].x,
         y: proj[i].y,
-        color: colorForIndex(docIndex.get(c.docId) ?? 0),
+        color: colorForIndex(docIndex.get(c.docId) ?? docIndex.get(c.docFilename) ?? 0),
       }));
       setPoints(built);
     } catch (err) {

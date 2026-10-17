@@ -357,3 +357,155 @@ def list_relationships(session_id, path=None):
     finally:
         conn.close()
 
+
+def get_stats(session_id, path=None):
+    """Return combined summary counts for the Knowledge overview."""
+    init_db(path)
+    conn = _connect(path)
+    try:
+        doc_count = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE session_id=? AND status!='superseded'", (session_id,)
+        ).fetchone()[0]
+        ent_count = conn.execute(
+            "SELECT COUNT(*) FROM entities WHERE session_id=?", (session_id,)
+        ).fetchone()[0]
+        fact_count = conn.execute(
+            "SELECT COUNT(*) FROM facts WHERE session_id=?", (session_id,)
+        ).fetchone()[0]
+        rel_count = conn.execute(
+            "SELECT COUNT(*) FROM relationships WHERE session_id=?", (session_id,)
+        ).fetchone()[0]
+        chunks_total = conn.execute(
+            "SELECT COALESCE(SUM(chunks), 0) FROM documents WHERE session_id=? AND status!='superseded'", (session_id,)
+        ).fetchone()[0]
+        return {
+            "documents": doc_count,
+            "entities": ent_count,
+            "facts": fact_count,
+            "relationships": rel_count,
+            "chunks": chunks_total,
+        }
+    finally:
+        conn.close()
+
+
+def get_document_graph(session_id, path=None):
+    """Return documents with inter-document edges based on shared entities."""
+    init_db(path)
+    conn = _connect(path)
+    try:
+        docs = conn.execute(
+            "SELECT * FROM documents WHERE session_id=? AND status!='superseded' ORDER BY created_at DESC",
+            (session_id,)
+        ).fetchall()
+        doc_list = [dict(r) for r in docs]
+        doc_ids = {d["doc_id"] for d in doc_list}
+
+        # For each doc, fetch top topics/entities mentioned
+        for d in doc_list:
+            top_subjects = conn.execute(
+                "SELECT subject, COUNT(*) as cnt FROM facts WHERE doc_id=? GROUP BY subject ORDER BY cnt DESC LIMIT 6",
+                (d["doc_id"],)
+            ).fetchall()
+            d["key_topics"] = [r["subject"] for r in top_subjects]
+
+        # Entity -> set of doc_ids that mention it (via facts)
+        ent_docs = {}
+        facts = conn.execute(
+            "SELECT doc_id, entity_id FROM facts WHERE session_id=? AND entity_id IS NOT NULL",
+            (session_id,)
+        ).fetchall()
+        for f in facts:
+            ent_docs.setdefault(f["entity_id"], set()).add(f["doc_id"])
+
+        edge_map = {}
+        for ent, doc_set in ent_docs.items():
+            ds = sorted(doc_set)
+            for i in range(len(ds)):
+                for j in range(i + 1, len(ds)):
+                    key = tuple(sorted([ds[i], ds[j]]))
+                    edge_map[key] = edge_map.get(key, 0) + 1
+
+        # Also bridge via relationships (entities connected to entities in other docs)
+        rels = conn.execute(
+            "SELECT src_entity_id, dst_entity_id FROM relationships WHERE session_id=?",
+            (session_id,)
+        ).fetchall()
+        for r in rels:
+            src_docs = ent_docs.get(r["src_entity_id"], set())
+            dst_docs = ent_docs.get(r["dst_entity_id"], set())
+            for da in src_docs:
+                for db in dst_docs:
+                    if da == db:
+                        continue
+                    key = tuple(sorted([da, db]))
+                    edge_map[key] = edge_map.get(key, 0) + 1
+
+        edges = []
+        for (da, db), count in edge_map.items():
+            if da in doc_ids and db in doc_ids:
+                sim_score = min(0.98, max(0.25, round(count / (count + 2), 2)))
+                edges.append({
+                    "source": da,
+                    "target": db,
+                    "weight": count,
+                    "similarity": sim_score,
+                    "rel_type": "shared_entities",
+                    "evidence": f"{count} shared entity/connection{'s' if count > 1 else ''}",
+                })
+
+        return {"documents": doc_list, "edges": edges}
+    finally:
+        conn.close()
+
+
+def get_entity_detail(session_id, entity_id, path=None):
+    """Return entity plus its facts and related entities (via relationships)."""
+    init_db(path)
+    conn = _connect(path)
+    try:
+        row = conn.execute(
+            "SELECT * FROM entities WHERE entity_id=? AND session_id=?", (entity_id, session_id)
+        ).fetchone()
+        if not row:
+            return None
+        ent = dict(row)
+        ent["aliases"] = json.loads(ent["aliases"] or "[]")
+
+        facts = conn.execute(
+            "SELECT f.*, d.filename AS filename FROM facts f LEFT JOIN documents d ON f.doc_id=d.doc_id WHERE f.entity_id=? AND f.session_id=? ORDER BY f.created_at DESC LIMIT 50",
+            (entity_id, session_id)
+        ).fetchall()
+        fact_dicts = []
+        for f in facts:
+            fd = dict(f)
+            fd["filename"] = fd.get("filename") or ""
+            fact_dicts.append(fd)
+        ent["facts"] = fact_dicts
+        ent["fact_count"] = conn.execute(
+            "SELECT COUNT(*) c FROM facts WHERE entity_id=? AND session_id=?", (entity_id, session_id)
+        ).fetchone()["c"]
+
+        rel_rows = conn.execute(
+            "SELECT * FROM relationships WHERE session_id=? AND (src_entity_id=? OR dst_entity_id=?)",
+            (session_id, entity_id, entity_id)
+        ).fetchall()
+        related_ids = set()
+        for r in rel_rows:
+            rid = r["dst_entity_id"] if r["src_entity_id"] == entity_id else r["src_entity_id"]
+            related_ids.add(rid)
+        related_entities = []
+        for rid in related_ids:
+            er = conn.execute(
+                "SELECT entity_id, canonical_name, entity_type, aliases, status FROM entities WHERE entity_id=?",
+                (rid,)
+            ).fetchone()
+            if er:
+                e = dict(er)
+                e["aliases"] = json.loads(e["aliases"] or "[]")
+                related_entities.append(e)
+        ent["related_entities"] = related_entities
+        ent["related_count"] = len(related_entities)
+        return ent
+    finally:
+        conn.close()

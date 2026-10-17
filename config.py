@@ -1,5 +1,8 @@
 """Central configuration. Env-first, no secrets in code."""
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def _int(name, default):

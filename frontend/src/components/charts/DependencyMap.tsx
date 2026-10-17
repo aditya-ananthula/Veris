@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Network, Eye } from 'lucide-react';
 import type { DependencyGraph, DependencyNode } from '../../types';
 
@@ -27,6 +27,7 @@ export function DependencyMap({ graph, height = 320, className = '' }: Dependenc
     });
     setNodes(initial);
   }, [graph.nodes.length, height]);
+  useEffect(() => { setHoverNode(null); setDragNode(null); }, [graph.nodes.length]);
 
   const simulate = useCallback(() => {
     if (!graph.nodes.length || !graph.edges.length) return;
@@ -51,9 +52,10 @@ export function DependencyMap({ graph, height = 320, className = '' }: Dependenc
     requestAnimationFrame(simulate);
   }, [nodes, graph.nodes, graph.edges, dragNode, dragPoint]);
 
-  useEffect(() => { requestAnimationFrame(simulate); }, [simulate]);
+  const rafRef = useRef(0);
+  useEffect(() => { rafRef.current = requestAnimationFrame(simulate); return () => cancelAnimationFrame(rafRef.current); }, [simulate]);
 
-  const nodeColor = (type: string) => ({ person: '#7fe3ff', organization: '#b79cff', location: '#ffc3a0', product: '#ff7b9c', policy: '#7fe3a8', unknown: '#94a3b8' }[type.toLowerCase()] ?? '#94a3b8');
+  const nodeColor = (type: unknown) => ({ person: '#7fe3ff', organization: '#b79cff', location: '#ffc3a0', product: '#ff7b9c', policy: '#7fe3a8', unknown: '#94a3b8' }[(typeof type === 'string' ? type : 'unknown').toLowerCase()] ?? '#94a3b8');
   const statusColor = (status: string) => (status === 'resolved' || status === 'validated' ? '#10b981' : status === 'disputed' || status === 'failed' ? '#ef4444' : status === 'uncertain' || status === 'pending' || status === 'extracting' ? '#f59e0b' : '#64748b');
   const cx = (widthRef.current / 2) || 200;
   const cy = height / 2;
@@ -82,6 +84,7 @@ export function DependencyMap({ graph, height = 320, className = '' }: Dependenc
           const tIdx = graph.nodes.findIndex((n: { id: string }) => n.id === e.target);
           if (sIdx < 0 || tIdx < 0) return null;
           const s = nodes[sIdx], t = nodes[tIdx];
+          if (!s || !t) return null;
           const dx = t.x - s.x, dy = t.y - s.y, dist = Math.hypot(dx, dy) || 1;
           const nx = -dy / dist, ny = dx / dist;
           const hovered = hoverNode === sIdx || hoverNode === tIdx;
@@ -95,8 +98,9 @@ export function DependencyMap({ graph, height = 320, className = '' }: Dependenc
         {graph.nodes.map((n: DependencyNode, i: number) => {
           const hovered = i === hoverNode;
           const r = hovered ? NODE_R_HOVER : NODE_R;
+          const pos = nodes[i] ?? { x: 0, y: 0 };
           return (
-            <g key={n.id} transform={`translate(${cx + nodes[i].x}, ${cy + nodes[i].y})`}
+            <g key={n.id} transform={`translate(${cx + pos.x}, ${cy + pos.y})`}
               onMouseMove={(e) => onNodeMove(e, i)} onMouseDown={(e) => { e.stopPropagation(); onNodeMove(e, i); }}
               className="cursor-grab active:cursor-grabbing">
               <circle r={r} fill={nodeColor(n.type)} fillOpacity={0.12} stroke={nodeColor(n.type)} strokeWidth={2} className="transition-all duration-300" style={{ filter: hovered ? 'drop-shadow-[0_0_16px_rgba(255,255,255,0.15)]' : 'none' }} />
