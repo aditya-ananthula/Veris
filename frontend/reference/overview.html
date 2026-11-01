@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Veris – Overview</title>
+<style>
+:root{--text:#f2f0ff;--muted:#b4afe0;--border:rgba(150,125,255,.38);--violet:#8b5cf6;--cyan:#22d3ee;--green:#34d399;--amber:#f59e0b;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px);min-height:100%}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--text);font-family:"Inter","Segoe UI",system-ui,sans-serif;
+ background:radial-gradient(50% 45% at 78% 15%,#5b2bd6,transparent 65%),radial-gradient(40% 40% at 5% 100%,#1d4ed8,transparent 65%),#05030f}
+#gl{position:fixed;inset:0;width:100%;height:100%;z-index:0}
+.app{position:relative;z-index:1;display:grid;grid-template-columns:104px 1fr;min-height:100vh}
+.side{border-right:1px solid rgba(150,125,255,.25);background:linear-gradient(180deg,rgba(8,5,32,.55),rgba(8,5,32,.25));backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:16px 8px;display:flex;flex-direction:column;gap:6px}
+.logo{font-size:20px;font-weight:600;padding:2px 6px 18px;display:flex;gap:6px;align-items:center}
+.logo b{color:#a78bfa;font-style:italic;text-shadow:0 0 14px #8b5cf6}
+.nav{display:flex;align-items:center;gap:8px;padding:9px 8px;border-radius:9px;font-size:12px;color:var(--muted);border:1px solid transparent;cursor:pointer}
+.nav svg{width:15px;height:15px;flex:none}
+.nav:hover{color:#fff}
+.nav.on{color:#fff;background:rgba(139,92,246,.28);border-color:#a78bfa;box-shadow:0 0 18px rgba(139,92,246,.65),inset 0 0 12px rgba(139,92,246,.3)}
+.sp{flex:1}
+.main{padding:14px 28px 30px;min-width:0;position:relative}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.pill{border:1px solid var(--border);border-radius:10px;background:rgba(12,8,40,.45);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.search{width:min(430px,50%);display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;color:var(--muted)}
+.search span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kbd{border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:10px}
+.right{display:flex;gap:10px;align-items:center}
+.ws{padding:8px 12px;font-size:12px;display:flex;gap:18px}
+.av{width:30px;height:30px;border-radius:50%;background:rgba(30,20,100,.7);border:1px solid #a78bfa;display:grid;place-items:center;font-size:11px;box-shadow:0 0 12px rgba(139,92,246,.6)}
+.hero{position:relative;padding:62px 0 6px;min-height:260px}
+#orbpos{position:absolute;right:3%;top:-28px;width:360px;height:360px;pointer-events:none}
+.tag{position:absolute;right:0;top:170px;font-size:9px;color:#b79cff;line-height:1.5;width:60px;text-shadow:0 0 8px #6d28d9}
+h1{margin:0;font-size:clamp(34px,4.6vw,50px);line-height:1.06;font-weight:600;letter-spacing:-.015em;position:relative;text-shadow:0 2px 24px rgba(10,5,50,.8)}
+.sub{margin:14px 0 0;color:#cfcaf5;font-size:13px;max-width:390px;position:relative;line-height:1.5}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:34px 0 18px;position:relative}
+.card,.glass{background:linear-gradient(160deg,rgba(40,28,110,.38),rgba(12,8,45,.34));backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 30px rgba(5,2,30,.35),inset 0 1px 0 rgba(255,255,255,.08)}
+.card{padding:16px 14px;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+.card:hover{border-color:#a78bfa;box-shadow:0 0 26px rgba(139,92,246,.55),inset 0 1px 0 rgba(255,255,255,.1)}
+.ci{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;margin-bottom:22px;border:1px solid}
+.ci svg{width:16px;height:16px}
+.card h3{margin:0 0 5px;font-size:14px;font-weight:600}
+.card p{margin:0;font-size:11px;color:var(--muted);line-height:1.45}
+.row{display:grid;grid-template-columns:1fr 1.15fr;gap:14px}
+.drop{border:1.5px dashed #a78bfa;border-radius:14px;padding:30px 18px;text-align:center;background:linear-gradient(160deg,rgba(70,40,190,.35),rgba(25,15,90,.3));backdrop-filter:blur(14px) saturate(1.5);-webkit-backdrop-filter:blur(14px) saturate(1.5);box-shadow:0 0 34px rgba(139,92,246,.55),inset 0 0 40px rgba(139,92,246,.22);display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;transition:background .2s}
+.drop.over{background:linear-gradient(160deg,rgba(100,60,230,.5),rgba(40,25,130,.45))}
+.drop svg{width:46px;height:46px;margin-bottom:6px;filter:drop-shadow(0 0 12px #a78bfa)}
+.drop h2{margin:0;font-size:15px;font-weight:600}
+.drop p{margin:0;font-size:11px;color:var(--muted)}
+.btn{margin-top:12px;padding:10px 26px;border:1px solid #a5b4fc;border-radius:9px;color:#fff;font:inherit;font-size:13px;font-weight:600;cursor:pointer;background:linear-gradient(135deg,#6d28d9,#3b6cf0);box-shadow:0 0 22px rgba(99,102,241,.85)}
+.btn:hover{filter:brightness(1.15)}
+.btn:focus-visible,.card:focus-visible,.nav:focus-visible,.drop:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.see{padding:18px 20px}
+.see h2{margin:0 0 14px;font-size:14px;font-weight:600}
+.step{display:flex;gap:14px;align-items:flex-start;margin-bottom:16px}
+.step:last-child{margin-bottom:0}
+.n{flex:none;width:26px;height:26px;border-radius:50%;border:1px solid #a78bfa;display:grid;place-items:center;font-size:11px;background:rgba(139,92,246,.25);box-shadow:0 0 12px rgba(139,92,246,.65)}
+.step h4{margin:0 0 3px;font-size:13px;font-weight:500}
+.step p{margin:0;font-size:11px;color:var(--muted);line-height:1.5}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:rgba(10,8,30,.92);border:1px solid var(--border);border-radius:10px;padding:9px 16px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+.toast.show{opacity:1}
+@media(max-width:900px){
+ .app{grid-template-columns:1fr}
+ .side{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--border);padding:8px}
+ .logo{padding:0 10px 0 4px}.sp{display:none}
+ .main{padding:12px 16px 24px}
+ .cards{grid-template-columns:1fr 1fr}.row{grid-template-columns:1fr}
+ #orbpos{width:220px;height:220px;right:-40px;top:10px}.tag{display:none}
+ .ws{display:none}.search{width:100%}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<canvas id="gl" aria-hidden="true"></canvas>
+<div class="app">
+ <nav class="side" aria-label="Main">
+  <div class="logo"><b>V</b>Veris</div>
+  <div class="nav on" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Overview</div>
+  <div class="nav" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>Documents</div>
+  <div class="nav" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>Intelligence</div>
+  <div class="nav" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>Knowledge</div>
+  <div class="sp"></div>
+  <div class="nav" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14 3h-4l-.6 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2L10 21h4l.6-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>Settings</div>
+  <div class="nav" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7M12 17h.01"/></svg>Help</div>
+ </nav>
+
+ <main class="main">
+  <div class="top">
+   <div class="pill search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><span>Ask a question, or search your documents...</span><span class="kbd" style="flex:none">Ctrl K</span></div>
+   <div class="right"><div class="pill ws">Research Workspace <span>?</span></div><div class="av">JD</div></div>
+  </div>
+
+  <section class="hero">
+   <div id="orbpos" aria-hidden="true"></div>
+   <div class="tag" aria-hidden="true">More<br>Clarity.<br>Deeper<br>Understanding.</div>
+   <h1>Turn your documents<br>into intelligence.</h1>
+   <p class="sub">Upload, explore, ask questions, compare sources, and uncover hidden connections — all in one place.</p>
+  </section>
+
+  <div class="cards">
+   <div class="card" tabindex="0" data-t="Ask"><div class="ci" style="color:var(--green);border-color:var(--green);background:rgba(52,211,153,.14)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg></div><h3>Ask</h3><p>Get grounded answers with source citations.</p></div>
+   <div class="card" tabindex="0" data-t="Compare"><div class="ci" style="color:#b79cff;border-color:#b79cff;background:rgba(139,92,246,.2)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/></svg></div><h3>Compare</h3><p>Find differences, similarities and conflicts.</p></div>
+   <div class="card" tabindex="0" data-t="Explore"><div class="ci" style="color:#7aa2ff;border-color:#7aa2ff;background:rgba(79,108,247,.2)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7l8 1M7 8l4 8M17 10l-4 6"/></svg></div><h3>Explore</h3><p>Visualize connections across your documents.</p></div>
+   <div class="card" tabindex="0" data-t="Discover"><div class="ci" style="color:var(--amber);border-color:var(--amber);background:rgba(245,158,11,.16)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0 0 12 3z"/></svg></div><h3>Discover</h3><p>Extract key entities, relationships and concepts.</p></div>
+  </div>
+
+  <div class="row">
+   <div class="drop" id="drop" tabindex="0" role="button" aria-label="Upload documents">
+    <svg viewBox="0 0 48 48" fill="none" stroke="#d4c8ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 34a9 9 0 0 1-1-17.9A12 12 0 0 1 36 18a8 8 0 0 1-1 16"/><path d="M24 40V24M18 29l6-6 6 6"/></svg>
+    <h2>Upload your documents to get started</h2>
+    <p>Drag &amp; drop files here, or click to browse</p>
+    <p>PDF, DOCX, PPTX, TXT, MD (Max 100MB)</p>
+    <button class="btn" id="browse" type="button">Browse Files</button>
+    <input type="file" id="file" multiple accept=".pdf,.docx,.pptx,.txt,.md" hidden>
+   </div>
+   <div class="glass see">
+    <h2>See what you can do</h2>
+    <div class="step"><div class="n">1</div><div><h4>Upload documents</h4><p>Add your research, reports or notes</p></div></div>
+    <div class="step"><div class="n">2</div><div><h4>We process &amp; analyze</h4><p>Extract text, create chunks, generate embeddings, identify entities and relationships</p></div></div>
+    <div class="step"><div class="n">3</div><div><h4>Explore &amp; ask</h4><p>Visualize, compare and get insights with sources.</p></div></div>
+   </div>
+  </div>
+ </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script id="fs" type="x-shader/x-fragment">
+precision highp float;
+uniform vec2 R;uniform float T;uniform vec3 O;
+float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+float fbm(vec2 p){float v=0.,a=.5;mat2 m=mat2(1.6,1.2,-1.2,1.6);for(int i=0;i<5;i++){v+=a*n(p);p=m*p;a*=.5;}return v;}
+float ring(vec2 e,float ang,float sx,float sy,float w){float ca=cos(ang),sa=sin(ang);vec2 q=vec2(ca*e.x+sa*e.y,-sa*e.x+ca*e.y);float d=length(vec2(q.x/sx,q.y/sy));return exp(-pow((d-1.)/w,2.));}
+void main(){
+ vec2 fc=vec2(gl_FragCoord.x,R.y-gl_FragCoord.y);
+ vec2 s=fc/R;vec2 p=fc/R.y*2.3;float t=T*.025;
+ vec2 q=vec2(fbm(p+t),fbm(p+vec2(5.2,1.3)-t));
+ vec2 r=vec2(fbm(p+3.*q+vec2(1.7,9.2)+t),fbm(p+3.*q+vec2(8.3,2.8)-t));
+ float f=fbm(p+3.*r);
+ vec3 c=vec3(.012,.008,.06);
+ c=mix(c,vec3(.16,.07,.58),smoothstep(.25,.85,f));
+ c=mix(c,vec3(.72,.14,.9),smoothstep(.5,1.,r.x)*.85);
+ c=mix(c,vec3(.12,.42,1.),smoothstep(.45,1.,q.y)*.9);
+ c+=vec3(0.,.55,.8)*pow(smoothstep(.55,.95,r.y),3.)*.7;
+ c+=vec3(1.,.35,.7)*pow(smoothstep(.6,1.,f*r.x*1.8),3.)*.5;
+ float m=.45+1.3*exp(-pow(length((s-vec2(.82,.12))*vec2(1.,.8)),2.)*3.2)+.9*exp(-pow(length(s-vec2(.04,.97)),2.)*4.5)+.5*exp(-pow(length(s-vec2(.45,.62)),2.)*6.)+.5*exp(-pow(length(s-vec2(.98,.7)),2.)*8.);
+ c*=m*1.55;
+ c*=1.-.55*smoothstep(.55,.8,fbm(p*1.4+9.));
+ vec2 g=fc/(R.y/90.);float st=h(floor(g));vec2 fr=fract(g)-.5;
+ c+=vec3(.9,.9,1.)*smoothstep(.16,0.,length(fr))*step(.965,st)*(.6+.4*sin(T*1.5+st*80.));
+ vec2 o=O.xy;float rad=O.z;vec2 e=(fc-o)/rad;float d=length(e);
+ if(d>1.)c+=vec3(.5,.3,1.)*exp(-(d-1.)*2.4)*.38;
+ if(d<1.){
+  float z=sqrt(1.-d*d);vec3 N=vec3(e,z);float fr2=pow(1.-z,2.2);
+  vec2 sp=e*1.7+vec2(cos(T*.12),sin(T*.12))*.4;
+  float sw=fbm(sp*2.+fbm(sp*3.+T*.05)*2.4);
+  vec3 inner=mix(vec3(.25,.1,.85),vec3(1.,.55,1.),sw);
+  inner=mix(inner,vec3(.1,.75,1.),smoothstep(.2,1.,-e.y*.7+sw*.7)*.65);
+  c=mix(c*.8,inner*1.05+c*.3,.62*z+.18);
+  c+=vec3(.6,.5,1.)*fr2*1.5;
+  c+=vec3(.3,.95,1.)*pow(max(dot(normalize(vec3(-.5,-.6,.7)),N),0.),22.)*.8;
+ }
+ c+=vec3(.78,.68,1.)*ring(e,-.5,1.32,.42,.028)*1.1;
+ c+=vec3(.35,.85,1.)*ring(e,.45,1.22,.36,.022)*.8;
+ c+=vec3(.9,.5,1.)*ring(e,-.1,1.5,.6,.02)*.45;
+ c=1.-exp(-c*1.35);c=pow(c,vec3(.9));
+ gl_FragColor=vec4(c,1.);
+}
+</script>
+<script>
+const $=s=>document.querySelector(s),cv=$("#gl"),ts=$("#toast");let tm;
+function toast(m){ts.textContent=m;ts.classList.add("show");clearTimeout(tm);tm=setTimeout(()=>ts.classList.remove("show"),2200)}
+(function(){
+ const gl=cv.getContext("webgl");if(!gl)return;
+ const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);return o};
+ const pr=gl.createProgram();
+ gl.attachShader(pr,sh(gl.VERTEX_SHADER,"attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}"));
+ gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,$("#fs").textContent));
+ gl.linkProgram(pr);if(!gl.getProgramParameter(pr,gl.LINK_STATUS))return;
+ gl.useProgram(pr);
+ const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);
+ gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+ const a=gl.getAttribLocation(pr,"a");gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,2,gl.FLOAT,false,0,0);
+ const uR=gl.getUniformLocation(pr,"R"),uT=gl.getUniformLocation(pr,"T"),uO=gl.getUniformLocation(pr,"O");
+ const sc=Math.min(.6,1100/Math.max(innerWidth,innerHeight));
+ const calm=matchMedia("(prefers-reduced-motion:reduce)").matches;
+ function size(){cv.width=Math.round(innerWidth*sc);cv.height=Math.round(innerHeight*sc);gl.viewport(0,0,cv.width,cv.height)}
+ function draw(ms){
+  const r=$("#orbpos").getBoundingClientRect();
+  gl.uniform2f(uR,cv.width,cv.height);gl.uniform1f(uT,calm?4:ms/1000);
+  gl.uniform3f(uO,(r.left+r.width/2)*sc,(r.top+r.height/2)*sc,r.width*.36*sc);
+  gl.drawArrays(gl.TRIANGLES,0,3);
+ }
+ size();
+ if(calm){draw(0);addEventListener("scroll",()=>draw(0));addEventListener("resize",()=>{size();draw(0)})}
+ else{addEventListener("resize",size);(function loop(ms){draw(ms);requestAnimationFrame(loop)})(0)}
+})();
+const fi=$("#file"),dr=$("#drop");
+function got(f){if(f&&f.length)toast(f.length+" file"+(f.length>1?"s":"")+" selected: "+[...f].map(x=>x.name).join(", "))}
+$("#browse").onclick=e=>{e.stopPropagation();fi.click()};
+dr.onclick=()=>fi.click();
+dr.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fi.click()}};
+fi.onchange=()=>got(fi.files);
+["dragenter","dragover"].forEach(v=>dr.addEventListener(v,e=>{e.preventDefault();dr.classList.add("over")}));
+["dragleave","drop"].forEach(v=>dr.addEventListener(v,e=>{e.preventDefault();dr.classList.remove("over")}));
+dr.addEventListener("drop",e=>got(e.dataTransfer.files));
+document.querySelectorAll(".card").forEach(c=>{c.onclick=()=>toast(c.dataset.t+" (demo)");c.onkeydown=e=>{if(e.key==="Enter")c.click()}});
+addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key==="k"){e.preventDefault();toast("Search (demo)")}});
+</script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+import { describe, it, expect } from 'vitest';
+import { SUB_POINTS_PER_CHUNK } from './components/charts/ChunkCloud';
+import { MarkdownRenderer } from './components/MarkdownRenderer';
+import { render } from '@testing-library/react';
+
+describe('Chunk Cloud 10:1 visual-marker-to-chunk relationship', () => {
+  it('exports exactly 10 sub-points per chunk', () => {
+    expect(SUB_POINTS_PER_CHUNK).toBe(10);
+  });
+});
+
+describe('MarkdownRenderer', () => {
+  it('renders bold and code without raw markdown symbols', () => {
+    const { container } = render(<MarkdownRenderer text="This is **bold** and `code` here." />);
+    const html = container.innerHTML;
+    expect(html).not.toContain('**');
+    expect(html).not.toContain('`');
+    expect(html).toContain('<strong>');
+    expect(html).toContain('<code>');
+  });
+
+  it('renders a fenced code block', () => {
+    const { container } = render(<MarkdownRenderer text="```ts\nconst x = 1;\n```" />);
+    expect(container.querySelector('pre')).toBeTruthy();
+    expect(container.querySelector('code')?.textContent).toContain('const x = 1;');
+  });
+
+  it('renders a link as an anchor', () => {
+    const { container } = render(<MarkdownRenderer text="see [doc](file.txt)" />);
+    const link = container.querySelector('a');
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute('href')).toBe('file.txt');
+  });
+});

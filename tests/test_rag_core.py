@@ -1,4 +1,4 @@
-"""Offline regression tests for the existing RAG baseline.
+﻿"""Offline regression tests for the existing RAG baseline.
 
 No network, no Groq key, no Ollama needed: LLM calls are monkeypatched.
 Run: venv\\Scripts\\python -m pytest tests/ -v
@@ -114,8 +114,8 @@ def test_api_contracts_offline(monkeypatch):
     c = TestClient(api.app)
     h = c.get("/health")
     assert h.status_code == 200 and h.json()["status"] == "ok"
-    assert "groq_configured" in h.json()
-    assert set(h.json()) == {"status", "app", "groq_configured", "model"}
+    assert "nvidia_configured" in h.json()
+    assert set(h.json()) == {"status", "app", "nvidia_configured", "model"}
     sid = str(uuid.uuid4())
     r = c.post("/absorb", files={"file": ("a.txt", b"hello world " * 30)}, data={"session_id": sid})
     assert r.status_code == 200 and r.json()["filename"] == "a.txt"
@@ -166,8 +166,8 @@ def test_api_phase2_endpoints(monkeypatch):
     assert ".pdf" in body["supported_extensions"]
     assert body["max_upload_mb"] == 10.0
     assert body["persistence"] == "ephemeral-in-memory"
-    assert "groq_configured" in body and "features" in body
-    assert "GROQ" not in str(body).upper() or "groq_configured" in body
+    assert "nvidia_configured" in body and "features" in body
+    assert "NVIDIA" not in str(body).upper() or "nvidia_configured" in body
     sid = str(uuid.uuid4())
     c.post("/absorb", files={"file": ("m.txt", b"meta check words " * 30)}, data={"session_id": sid})
     m = c.get("/documents/meta", params={"session_id": sid})

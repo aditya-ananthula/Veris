@@ -11,7 +11,7 @@ uvicorn api:app --reload --port 8000
 Health: http://127.0.0.1:8000/health · Capabilities: /capabilities ·
 Docs: /documents · Ask: POST /ask · Upload: POST /absorb
 
-Requires `GROQ_API_KEY` in `.env` (see `.env.example`) for live answers.
+Requires `NVIDIA_API_KEY` in `.env` (see `.env.example`) for live answers.
 Without it, `/ask` returns HTTP 502 with a plain message (no secret leakage).
 
 ## Frontend (React + Vite, port 5173)
@@ -46,4 +46,4 @@ npm run build       # tsc + vite build -> frontend/dist
 - Port 8000 may be taken by another app in shared environments; Veris was
   E2E-verified on 8001 with identical results.
 - ChromaDB is ephemeral in-memory; backend restarts clear sessions.
-- Never put `GROQ_API_KEY` in `frontend/.env` — the browser must not hold secrets.
+- Never put `NVIDIA_API_KEY` in `frontend/.env` — the browser must not hold secrets.

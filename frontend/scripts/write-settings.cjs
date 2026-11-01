@@ -87,9 +87,9 @@ export function SettingsPage() {
                 <Shield size={16} className="text-accent-400" /> Security
               </h3>
               <p className="mt-1 text-sm text-slate-400">
-                {caps?.groq_configured ?? health?.groq_configured
+                {caps?.nvidia_configured ?? health?.nvidia_configured
                   ? "LLM provider key is configured on the backend."
-                  : "LLM provider key is NOT configured — questions will fail until GROQ_API_KEY is set server-side."}
+                  : "LLM provider key is NOT configured — questions will fail until NVIDIA_API_KEY is set server-side."}
               </p>
             </div>
           </div>
@@ -107,13 +107,13 @@ export function SettingsPage() {
             </div>
             <div className="rounded-lg bg-slate-950 p-4 border border-slate-700/40">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-slate-300">GROQ API Key</span>
-                <Badge variant={caps?.groq_configured ? "success" : "error"}>
-                  {caps?.groq_configured ? "Configured" : "Not configured"}
+                <span className="text-xs font-medium text-slate-300">NVIDIA API Key</span>
+                <Badge variant={caps?.nvidia_configured ? "success" : "error"}>
+                  {caps?.nvidia_configured ? "Configured" : "Not configured"}
                 </Badge>
               </div>
               <p className="text-xs text-slate-500">
-                Set GROQ_API_KEY on the backend to enable document intelligence features.
+                Set NVIDIA_API_KEY on the backend to enable document intelligence features.
               </p>
             </div>
           </div>

@@ -3,7 +3,7 @@ import { ChevronRight, MoreHorizontal, Sparkles } from 'lucide-react';
 
 export function Card({ children, className = '', style }: { children: ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
-    <div className={`rounded-xl haze-panel backdrop-blur-md shadow-soft ${className}`} style={style}>{children}</div>
+    <div className={`lg-panel ${className}`} style={style}>{children}</div>
   );
 }
 
@@ -96,10 +96,10 @@ export function Badge({ children, variant = 'default', className = '' }: { child
 
 export function Button({ children, variant = 'default', className = '', disabled }: { children: ReactNode; variant?: 'default' | 'accent' | 'danger' | 'ghost'; className?: string; disabled?: boolean }) {
   const variants: Record<string, string> = {
-    default: 'bg-slate-800 border border-slate-600/40 text-slate-200 hover:bg-slate-700 hover:border-slate-500',
-    accent: 'bg-accent-500 text-slate-950 hover:bg-accent-400 border-accent-500/30',
-    danger: 'bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300',
-    ghost: 'bg-transparent text-slate-400 hover:bg-slate-800 hover:text-slate-200',
+    default: 'lg-button border-slate-600/40 text-slate-200',
+    accent: 'lg-button-primary',
+    danger: 'lg-button border-red-500/20 text-red-400',
+    ghost: 'lg-button bg-transparent text-slate-400 border-transparent hover:bg-slate-800 hover:text-slate-200',
   };
   return (
     <button
@@ -114,7 +114,7 @@ export function Button({ children, variant = 'default', className = '', disabled
 export function Input({ className = '', ...props }: { className?: string; [key: string]: any }) {
   return (
     <input
-      className={`flex-1 rounded-lg border border-slate-600 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 hover:border-slate-500 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none transition-all ${className}`}
+      className={`lg-input ${className}`}
       {...props}
     />
   );

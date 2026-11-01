@@ -276,7 +276,7 @@ def _llm_semantic_compare(
 ) -> Optional[Dict[str, Any]]:
     """Use an LLM to semantically compare two claims.
 
-    Attempts to call Groq (or OpenAI-compatible) API.  On any failure
+    Attempts to call NVIDIA (or OpenAI-compatible) API.  On any failure
     (timeout, network, missing key, parse error) returns None so the caller
     can fall back to the deterministic result.
     """
@@ -284,7 +284,7 @@ def _llm_semantic_compare(
         import os
         import json
 
-        api_key = os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("NVIDIA_API_KEY")
         if not api_key:
             return None
 
@@ -293,8 +293,8 @@ def _llm_semantic_compare(
         except ImportError:
             return None
 
-        base_url = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-        model = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+        base_url = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+        model = os.getenv("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
 
         prompt = (
             "You are a careful claim-comparison assistant. Compare the two "

@@ -11,7 +11,7 @@ export function verdictTone(validation: string | undefined): 'ok' | 'warn' | 'mu
 
 export function MessageBubble({ msg }: { msg: ChatMessage }) {
   const [copied, setCopied] = useState(false);
-  const [showSources, setShowSources] = useState(true);
+  const [showSources, setShowSources] = useState(false);
   if (msg.role === 'user') {
     return (
       <div className="flex justify-end">

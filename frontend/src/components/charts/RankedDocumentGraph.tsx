@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, Network, Search, ZoomIn, ZoomOut } from 'lucide-react';
-import type {
-  DocumentEdge,
-  DocumentGraph,
-  DocumentNode,
-  DocumentRankEntry,
-} from '../../types';
+import type { DocumentEdge, DocumentGraph, DocumentGraphEdge, DocumentNode, DocumentRankEntry } from '../../types';
 
 interface RankedDocumentGraphProps {
   documents: Array<{
@@ -17,33 +12,18 @@ interface RankedDocumentGraphProps {
     extraction_error: string | null;
     chunks: number;
   }>;
-  relationships: Array<{
-    rel_id: string;
-    src_entity_id: string;
-    rel_type: string;
-    dst_entity_id: string;
-    doc_id: string;
-    evidence: string;
-    status: string;
-  }>;
-  entities: Array<{
-    entity_id: string;
-    canonical_name: string;
-    entity_type: string;
-    aliases: string[];
-    status: string;
-    fact_count: number;
-  }>;
+  edges: DocumentGraphEdge[];
   height?: number;
   className?: string;
 }
 
-const MIN_NODE_R = 22;
-const MAX_NODE_R = 52;
-const LAYOUT_RADIUS_FACTOR = 0.42;
-const SIMULATION_DAMPING = 0.88;
-const SIMULATION_K = 0.02;
-const SIMULATION_CENTER_PULL = 0.015;
+const MIN_NODE_R = 20;
+const MAX_NODE_R = 48;
+const LAYOUT_RADIUS_FACTOR = 0.45;
+const SIMULATION_DAMPING = 0.85;
+const SIMULATION_K = 0.06;
+const SIMULATION_CENTER_PULL = 0.02;
+const CONVERGE_SPEED = 0.015;
 
 /** A DocumentNode plus physics-simulation velocity fields. */
 type SimNode = DocumentNode & { vx: number; vy: number };
@@ -55,6 +35,10 @@ const STATUS_COLORS: Record<string, string> = {
   pending: '#64748b',
   indexed: '#22d3ee',
 };
+
+function finite(n: number): number {
+  return Number.isFinite(n) ? n : 0;
+}
 
 function rankAndSize(docs: Array<{ chunks: number; doc_id: string; filename: string; status: string }>) {
   const sorted = [...docs].sort((a, b) => b.chunks - a.chunks || a.filename.localeCompare(b.filename));
@@ -77,8 +61,7 @@ function rankAndSize(docs: Array<{ chunks: number; doc_id: string; filename: str
 
 function buildDocumentGraph(
   docs: Array<{ doc_id: string; filename: string; chunks: number; status: string; extraction_status: string }>,
-  _entities: Array<{ entity_id: string; canonical_name: string }>,
-  relationships: Array<{ src_entity_id: string; dst_entity_id: string; doc_id: string; evidence: string }>,
+  sourceEdges: DocumentGraphEdge[],
 ): DocumentGraph {
   const { ranked, sizeFor } = rankAndSize(docs);
   const rankById = new Map(ranked.map((r) => [r.docId, r.rank]));
@@ -99,43 +82,29 @@ function buildDocumentGraph(
   });
 
   const nodeIds = new Set(nodes.map((n) => n.id));
-  const entityDocs = new Map<string, Set<string>>();
-  relationships.forEach((r) => {
-    if (!entityDocs.has(r.src_entity_id)) entityDocs.set(r.src_entity_id, new Set());
-    if (!entityDocs.has(r.dst_entity_id)) entityDocs.set(r.dst_entity_id, new Set());
-    entityDocs.get(r.src_entity_id)!.add(r.doc_id);
-    entityDocs.get(r.dst_entity_id)!.add(r.doc_id);
-  });
+  const edges = sourceEdges.filter((edge) => edge.source !== edge.target && nodeIds.has(edge.source) && nodeIds.has(edge.target) && Number.isFinite(edge.weight) && edge.weight > 0)
+    .map((edge) => ({ id: `${edge.source}:${edge.target}:${edge.rel_type}`, source: edge.source, target: edge.target, relType: edge.rel_type, evidence: edge.evidence, verified: true }));
+  return { nodes, edges };
+}
 
-  const edgeMap = new Map<string, DocumentEdge>();
-  entityDocs.forEach((docSet, entityId) => {
-    const docList = Array.from(docSet).filter((d) => nodeIds.has(d));
-    for (let i = 0; i < docList.length; i++) {
-      for (let j = i + 1; j < docList.length; j++) {
-        const a = docList[i];
-        const b = docList[j];
-        const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-        if (!edgeMap.has(key)) {
-          edgeMap.set(key, {
-            id: key,
-            source: a,
-            target: b,
-            relType: 'shared_entity',
-            evidence: `Both documents reference entity ${entityId}`,
-            verified: true,
-          });
-        }
-      }
-    }
-  });
-
-  return { nodes, edges: Array.from(edgeMap.values()) };
+/** Deterministic initial positions distributed across the canvas (no origin collapse). */
+function initialPositions(count: number, width: number, height: number): Array<{ x: number; y: number }> {
+  const out = Array<{ x: number; y: number }>();
+  const cx = width / 2;
+  const cy = height / 2;
+  const radius = Math.min(width, height) * LAYOUT_RADIUS_FACTOR;
+  for (let i = 0; i < count; i++) {
+    // Fibonacci-ish spiral: deterministic, well distributed, never all at origin.
+    const phi = i * 2.39996323;
+    const r = radius * Math.sqrt((i + 1) / count);
+    out.push({ x: cx + Math.cos(phi) * r, y: cy + Math.sin(phi) * r });
+  }
+  return out;
 }
 
 export function RankedDocumentGraph({
   documents,
-  relationships,
-  entities,
+  edges,
   height = 480,
   className = '',
 }: RankedDocumentGraphProps) {
@@ -163,10 +132,9 @@ export function RankedDocumentGraph({
         status: d.status,
         extraction_status: d.extraction_status,
       })),
-      entities,
-      relationships,
+       edges,
     );
-  }, [documents, entities, relationships]);
+  }, [documents, edges]);
 
   const filteredNodes = useMemo(() => {
     return graph.nodes.filter((n) => {
@@ -175,26 +143,41 @@ export function RankedDocumentGraph({
       return true;
     });
   }, [graph.nodes, searchQuery, filterStatus]);
+  const isMountedRef = useRef(false);
+
+  // Stable deterministic layout: only recompute when the underlying graph changes.
+  // Positions persist across rerenders/refreshes unless nodes/edges change.
   useEffect(() => {
-    if (!graph.nodes.length) return;
+    if (!graph.nodes.length) {
+      setNodes([]);
+      setEdgesState([]);
+      return;
+    }
     const width = widthRef.current || 600;
-    const radius = Math.min(width, height) * LAYOUT_RADIUS_FACTOR;
-    const initial = graph.nodes.map((_, i) => {
-      const angle = (i / Math.max(graph.nodes.length, 1)) * 2 * Math.PI;
-      const maxC = Math.max(1, ...graph.nodes.map((n) => n.chunks));
-      const r = radius * (0.5 + 0.5 * (graph.nodes[i].chunks / maxC));
-      return { ...graph.nodes[i], x: Math.cos(angle) * r, y: Math.sin(angle) * r, vx: 0, vy: 0 };
-    });
+    const pos = initialPositions(graph.nodes.length, width, height);
+    const initial = graph.nodes.map((n, i) => ({
+      ...n,
+      x: finite(pos[i].x),
+      y: finite(pos[i].y),
+      vx: 0,
+      vy: 0,
+    }));
     setNodes(initial);
     setEdgesState(graph.edges);
     centerRef.x = width / 2;
     centerRef.y = height / 2;
     setViewBox({ x: -width / 2, y: -height / 2, w: width, h: height });
-  }, [graph.nodes.length, height]);
+    isMountedRef.current = true;
+  }, [graph.nodes, graph.edges, height]);
+
+  const settle = useRef<boolean>(false);
+
   const simulate = useCallback(() => {
-    if (!nodes.length) return;
-    const next = nodes.map((n) => ({ ...n, vx: n.vx || 0, vy: n.vy || 0 }));
+    if (!nodes.length || settle.current) return;
+    const next = nodes.map((n) => ({ ...n, vx: finite(n.vx), vy: finite(n.vy) }));
     const idxById = new Map(nodes.map((n, i) => [n.id, i]));
+
+    // Edge forces: pull connected nodes toward a sensible separation.
     for (const e of edgesState) {
       const si = idxById.get(e.source);
       const ti = idxById.get(e.target);
@@ -204,23 +187,47 @@ export function RankedDocumentGraph({
       const dx = t.x - s.x;
       const dy = t.y - s.y;
       const dist = Math.hypot(dx, dy) || 1;
-      const targetDist = (s.size + t.size) / 2 + 40;
-      const force = (dist - targetDist) * SIMULATION_K;
-      const fx = (dx / dist) * force;
-      const fy = (dy / dist) * force;
+      const targetDist = (s.size + t.size) / 2 + 45;
+      const force = ((dist - targetDist) / dist) * SIMULATION_K;
+      const fx = dx * force;
+      const fy = dy * force;
       s.vx -= fx;
       s.vy -= fy;
       t.vx += fx;
       t.vy += fy;
     }
+
+    // Repulsion between all nodes + center pull.
+    for (let i = 0; i < next.length; i++) {
+      const a = next[i];
+      a.vx -= a.x * SIMULATION_CENTER_PULL;
+      a.vy -= a.y * SIMULATION_CENTER_PULL;
+      for (let j = i + 1; j < next.length; j++) {
+        const b = next[j];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const minDist = (a.size + b.size) / 2 + 18;
+        if (dist < minDist) {
+          const push = ((minDist - dist) / dist) * 0.04;
+          const fx = dx * push;
+          const fy = dy * push;
+          a.vx -= fx;
+          a.vy -= fy;
+          b.vx += fx;
+          b.vy += fy;
+        }
+      }
+    }
+
+    let maxMove = 0;
     for (let i = 0; i < next.length; i++) {
       const n = next[i];
-      n.vx -= n.x * SIMULATION_CENTER_PULL;
-      n.vy -= n.y * SIMULATION_CENTER_PULL;
       n.vx *= SIMULATION_DAMPING;
       n.vy *= SIMULATION_DAMPING;
-      n.x += n.vx;
-      n.y += n.vy;
+      n.x = finite(n.x + n.vx);
+      n.y = finite(n.y + n.vy);
+      maxMove = Math.max(maxMove, Math.abs(n.vx), Math.abs(n.vy));
       if (dragNode === i) {
         n.x = dragPoint.x;
         n.y = dragPoint.y;
@@ -228,8 +235,13 @@ export function RankedDocumentGraph({
         n.vy = 0;
       }
     }
+
     setNodes(next);
-    requestAnimationFrame(simulate);
+    if (maxMove < CONVERGE_SPEED && !dragNode) {
+      settle.current = true;
+    } else {
+      requestAnimationFrame(simulate);
+    }
   }, [nodes, edgesState, dragNode, dragPoint]);
 
   useEffect(() => {
@@ -241,12 +253,12 @@ export function RankedDocumentGraph({
     const rect = svgRef.current.getBoundingClientRect();
     const xs = nodes.map((n) => n.x);
     const ys = nodes.map((n) => n.y);
-    const minX = Math.min(...xs) - 80;
-    const maxX = Math.max(...xs) + 80;
-    const minY = Math.min(...ys) - 80;
-    const maxY = Math.max(...ys) + 80;
-    const w = maxX - minX;
-    const h = maxY - minY;
+    const minX = Math.min(...xs) - 100;
+    const maxX = Math.max(...xs) + 100;
+    const minY = Math.min(...ys) - 100;
+    const maxY = Math.max(...ys) + 100;
+    const w = maxX - minX || 1;
+    const h = maxY - minY || 1;
     const scale = Math.min(rect.width / w, rect.height / h, 1.2);
     setViewBox({
       x: (minX + maxX) / 2 - rect.width / (2 * scale),
@@ -413,28 +425,51 @@ export function RankedDocumentGraph({
                 onClick={() => setSelectedNode(sel ? null : n)}
                 className="cursor-grab active:cursor-grabbing"
               >
+                <defs>
+                  <radialGradient id={`nodeGrad-${n.id}`} cx="30%" cy="30%" r="70%">
+                    <stop offset="0%" stopColor="#ffffff" stopOpacity={sel ? 0.35 : hovered ? 0.28 : 0.22} />
+                    <stop offset="55%" stopColor={nodeColor(n.status)} stopOpacity={0.5} />
+                    <stop offset="100%" stopColor={nodeColor(n.status)} stopOpacity={0} />
+                  </radialGradient>
+                </defs>
+                {/* Outer glow / luminous border */}
+                <circle
+                  r={r + 6}
+                  fill="none"
+                  stroke={nodeColor(n.status)}
+                  strokeOpacity={sel ? 0.35 : hovered ? 0.25 : 0.12}
+                  strokeWidth={2}
+                  className="transition-all duration-300"
+                />
+                {/* Translucent glass surface */}
                 <circle
                   r={r}
-                  fill={nodeColor(n.status)}
-                  fillOpacity={sel ? 0.18 : hovered ? 0.14 : 0.10}
+                  fill="url(#nodeGrad-${n.id})"
                   stroke={nodeColor(n.status)}
-                  strokeWidth={sel ? 3 : hovered ? 2 : 1.5}
+                  strokeWidth={sel ? 3 : hovered ? 2.5 : 1.5}
+                  fillOpacity={sel ? 0.22 : hovered ? 0.17 : 0.12}
                   className="transition-all duration-300"
-                  style={{
-                    filter: sel || hovered ? 'drop-shadow-[0_0_16px_rgba(255,255,255,0.12)]' : 'none',
-                  }}
                 />
-                <circle r={5} fill={STATUS_COLORS[n.status] ?? '#94a3b8'} />
+                {/* Inner reflection highlight */}
+                <circle
+                  r={r * 0.42}
+                  cx={-r * 0.35}
+                  cy={-r * 0.35}
+                  fill="#ffffff"
+                  fillOpacity={sel ? 0.45 : hovered ? 0.38 : 0.32}
+                  className="transition-all duration-300"
+                />
                 <text
                   x={0}
-                  y={-r - 10}
+                  y={-r - 12}
                   textAnchor="middle"
-                  fill={sel ? '#fff' : hovered ? '#c5c9d4' : '#94a3b8'}
+                  fill={sel ? '#ffffff' : hovered ? '#e2e8f0' : '#b4c2d9'}
                   fontSize="10"
-                  fontWeight="600"
+                  fontWeight="700"
+                  letterSpacing="0.02em"
                   className="transition-all"
                   style={{
-                    filter: sel || hovered ? 'drop-shadow-[0_0_6px_rgba(0,0,0,0.7)]' : 'none',
+                    filter: sel || hovered ? 'drop-shadow-[0_0_8px_rgba(0,0,0,0.8)]' : 'none',
                   }}
                   pointerEvents="none"
                 >
@@ -442,10 +477,11 @@ export function RankedDocumentGraph({
                 </text>
                 <text
                   x={0}
-                  y={r + 14}
+                  y={r + 16}
                   textAnchor="middle"
-                  fill="#64748b"
+                  fill="#94a3b8"
                   fontSize="9"
+                  fontWeight="600"
                   pointerEvents="none"
                 >
                   {n.chunks} chunks

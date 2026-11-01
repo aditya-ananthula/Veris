@@ -20,7 +20,7 @@ def _float(name, default):
 
 
 APP_NAME = os.environ.get("VERIS_APP_NAME", "Veris API")
-GROQ_MODEL = os.environ.get("VERIS_GROQ_MODEL", "openai/gpt-oss-20b")
+NVIDIA_MODEL = os.environ.get("VERIS_NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
 DISTANCE_THRESHOLD = _float("VERIS_DISTANCE_THRESHOLD", 1.5)
 MAX_UPLOAD_BYTES = _int("VERIS_MAX_UPLOAD_BYTES", 10 * 1024 * 1024)
 SESSION_TTL_SECONDS = _int("VERIS_SESSION_TTL_SECONDS", 3600)
@@ -42,5 +42,5 @@ EXTRACTION_TIMEOUT_S = _int("VERIS_EXTRACTION_TIMEOUT_S", 90)
 EXTRACTION_MAX_RETRIES = _int("VERIS_EXTRACTION_MAX_RETRIES", 1)
 
 
-def has_groq_key():
-    return bool(os.environ.get("GROQ_API_KEY"))
+def has_nvidia_key():
+    return bool(os.environ.get("NVIDIA_API_KEY"))

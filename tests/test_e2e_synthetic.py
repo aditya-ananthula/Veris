@@ -1,4 +1,4 @@
-"""Synthetic end-to-end E2E test simulating the full user journey.
+﻿"""Synthetic end-to-end E2E test simulating the full user journey.
 
 Uploads 2 docs, asks supported/unsupported questions, runs contradiction scan,
 verifies idempotent rescan, and confirms no raw stack traces reach the client.
@@ -28,7 +28,7 @@ def test_e2e_upload_ask_scan_rescan():
     """Full synthetic E2E: upload 2 docs, Q&A, contradiction scan, idempotent rescan."""
     sid = _sid()
 
-    # Monkeypatch _chat so no Groq key / network is needed
+    # Monkeypatch _chat so no NVIDIA key / network is needed
     def fake_chat(messages):
         user_text = messages[-1]["content"]
         # Extraction JSON answers
@@ -119,9 +119,9 @@ def test_e2e_upload_ask_scan_rescan():
     assert contradictions.status_code == 200, contradictions.text
 
     # 8. Verify /ask provider failure returns HTTP 502, not 500 stack trace
-    # Simulate a Groq failure by monkeypatching _chat to raise
+    # Simulate a NVIDIA failure by monkeypatching _chat to raise
     def boom_chat(messages):
-        raise RuntimeError("Groq provider is down")
+        raise RuntimeError("NVIDIA provider is down")
 
     rc._chat = boom_chat
     fail = client.post("/ask", json={"question": "What was Acme Corp revenue?", "session_id": sid})

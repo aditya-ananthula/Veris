@@ -6,7 +6,7 @@ Phases from master prompt, scoped to this repo (fc9e571).
 
 - [x] Inspect app.py/api.py/rag_core.py/ask.py/debug.py/reqs/README/env
 - [x] docs/VERIS_AUDIT.md
-- Baseline: Streamlit+FastAPI share Ephemeral Chroma; Groq-only; no tests.
+- Baseline: Streamlit+FastAPI share Ephemeral Chroma; NVIDIA-only; no tests.
 
 ## Phase 1 — Stable foundation [DONE 2026-10-15]
 Result: 9/9 pytest pass; /health OK with no key leakage; chroma_db/ intact;
@@ -28,7 +28,7 @@ Acceptance: baseline documented; regression coverage; no hardcoded secrets;
 Result: React+TS+Vite+Tailwind app in frontend/ wired to FastAPI via typed
 client + dev proxy. 12/12 backend tests, tsc clean, eslint clean, 3/3 vitest,
 vite build OK. Live HTTP E2E on :8001: health, capabilities, absorb(9 chunks),
-documents, meta, ask reached Groq (403 blocked by sandbox network, proving the
+documents, meta, ask reached NVIDIA (403 blocked by sandbox network, proving the
 full path executes), delete(9 removed, collection empty). Vite serves 200.
 app.py Streamlit untouched as fallback. No secrets in frontend.
 

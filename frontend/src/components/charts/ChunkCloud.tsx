@@ -10,6 +10,11 @@ interface ChunkCloudProps {
   className?: string;
 }
 
+/** Exactly 10 deterministic visual sub-points per real stored chunk.
+ *  These are markers linked to their parent chunk -- never separate chunks
+ *  or fabricated data. */
+export const SUB_POINTS_PER_CHUNK = 10;
+
 const DOC_PALETTE = [
   '#22d3ee', '#a855f7', '#f472b6', '#34d399', '#f59e0b',
   '#60a5fa', '#f87171', '#4ade80', '#e879f9', '#fbbf24',
@@ -19,7 +24,26 @@ function colorForIndex(i: number) {
   return DOC_PALETTE[i % DOC_PALETTE.length];
 }
 
-/** Project high-dim embeddings to 2D via deterministic PCA (power iteration). */
+/** FNV-1a 32-bit hash of a string, deterministic across runs and environments. */
+function strHash32(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** Cluster radius (in projection units) as a fraction of the overall data span,
+ *  used to place sub-points around their parent chunk. Small enough that
+ *  clusters stay distinct, large enough to be clearly visible after canvas fit. */
+const SUB_CLUSTER_RADIUS_FRAC = 0.02;
+
+/** Project high-dim embeddings to 2D via a correct deterministic PCA variant
+ *  (power iteration + deflation). Both PCs are computed on centered data with
+ *  pc2 computed on pc1-deflated rows, so the two axes stay orthogonal and
+ *  spread the points across the full 2D plane instead of collapsing into a
+ *  diagonal line. */
 function projectTo2D(embeddings: number[][]): Array<{ x: number; y: number }> {
   const n = embeddings.length;
   if (n === 0) return [];
@@ -32,19 +56,19 @@ function projectTo2D(embeddings: number[][]): Array<{ x: number; y: number }> {
   }
   for (let d = 0; d < dim; d++) mean[d] /= n;
   const centered = embeddings.map((vec) => vec.map((v, d) => v - mean[d]));
+  const totalVariance = centered.reduce(
+    (total, row) => total + row.reduce((sum, value) => sum + value * value, 0),
+    0,
+  );
+  if (!Number.isFinite(totalVariance) || totalVariance < 1e-10) return embeddings.map(() => ({ x: 0, y: 0 }));
 
-  const powerIterate = (input: number[][], exclude: number[] | null): number[] => {
+  const powerIterate = (input: number[][]): number[] => {
     let dir = new Array(dim).fill(0).map((_, i) => ((i * 37 + 11) % 100) / 100 - 0.5);
     for (let iter = 0; iter < 30; iter++) {
       const next = new Array(dim).fill(0);
       for (const row of input) {
         let dot = 0;
         for (let d = 0; d < dim; d++) dot += row[d] * dir[d];
-        if (exclude) {
-          let ex = 0;
-          for (let d = 0; d < dim; d++) ex += exclude[d] * row[d];
-          dot -= ex;
-        }
         for (let d = 0; d < dim; d++) next[d] += dot * row[d];
       }
       const norm = Math.hypot(...next);
@@ -54,8 +78,15 @@ function projectTo2D(embeddings: number[][]): Array<{ x: number; y: number }> {
     return dir;
   };
 
-  const pc1 = powerIterate(centered, null);
-  const pc2 = powerIterate(centered, pc1);
+  const pc1 = powerIterate(centered);
+  // Deflate: remove pc1 component from each row so pc2 captures orthogonal variance.
+  // (Previous version subtracted inside the dot product incorrectly, collapsing y ≈ 0 → straight line.)
+  const deflated = centered.map((row) => {
+    let d = 0;
+    for (let k = 0; k < dim; k++) d += row[k] * pc1[k];
+    return row.map((v, k) => v - d * pc1[k]);
+  });
+  const pc2 = powerIterate(deflated);
 
   return centered.map((row) => {
     let x = 0;
@@ -87,7 +118,15 @@ export function ChunkCloud({ sessionId, documents, height = 460, className = '' 
       setLoading(true);
       setError('');
       const res = await api.intelChunks(sessionId);
-      const raw = res.chunks.filter((c) => c.embedding && c.embedding.length > 0);
+      const allowed = new Set(documents.map((d) => d.doc_id));
+      const raw = res.chunks.filter((c) => {
+        const embedding = c.embedding;
+        return !!embedding
+          && embedding.length > 1
+          && embedding.length === (res.chunks.find((candidate) => candidate.embedding)?.embedding?.length ?? 0)
+          && embedding.every(Number.isFinite)
+          && (allowed.size === 0 || allowed.has(c.docId));
+      });
       if (raw.length === 0) {
         setPoints([]);
         return;
@@ -95,17 +134,44 @@ export function ChunkCloud({ sessionId, documents, height = 460, className = '' 
       const proj = projectTo2D(raw.map((c) => c.embedding as number[]));
       const docIndex = new Map<string, number>();
       documents.forEach((d, i) => { docIndex.set(d.doc_id, i); if (d.filename && !docIndex.has(d.filename)) docIndex.set(d.filename, i); });
-      const built: ChunkPoint[] = raw.map((c, i) => ({
-        id: c.id,
-        chunkId: c.id,
-        docId: c.docId,
-        docFilename: c.docFilename,
-        chunkIndex: c.chunkIndex,
-        text: c.text,
-        x: proj[i].x,
-        y: proj[i].y,
-        color: colorForIndex(docIndex.get(c.docId) ?? docIndex.get(c.docFilename) ?? 0),
-      }));
+
+      // Compute overall span of projected coordinates so sub-point cluster
+      // offsets stay proportional to the data spread (deterministic, meaningful).
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of proj) { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
+      const spanX = Math.max(maxX - minX, 1);
+      const spanY = Math.max(maxY - minY, 1);
+      const clusterRadius = Math.min(spanX, spanY) * SUB_CLUSTER_RADIUS_FRAC;
+
+      const built: ChunkPoint[] = [];
+      raw.forEach((c, i) => {
+        const baseX = proj[i].x;
+        const baseY = proj[i].y;
+        const color = colorForIndex(docIndex.get(c.docId) ?? docIndex.get(c.docFilename) ?? 0);
+        for (let n = 0; n < SUB_POINTS_PER_CHUNK; n++) {
+          const h = strHash32(`${c.id}|${n}`);
+          // Deterministic angle and radius within the cluster radius.
+          const angle = (h / 0xFFFFFFFF) * 2 * Math.PI;
+          const radius = clusterRadius * (0.35 + 0.65 * ((h >>> 8) / 0xFF));
+          const x = baseX + Math.cos(angle) * radius;
+          const y = baseY + Math.sin(angle) * radius;
+          built.push({
+            id: `${c.id}-sub-${n}`,
+            chunkId: c.id,
+            docId: c.docId,
+            docFilename: c.docFilename,
+            chunkIndex: c.chunkIndex,
+            text: c.text,
+            x,
+            y,
+            color,
+          });
+        }
+      });
+
+      if (built.length > 1 && built.every((point) => point.x === 0 && point.y === 0)) {
+        setError('Embeddings are present but have no measurable variance, so a semantic 2D projection cannot be shown. Re-index the affected documents with valid embeddings.');
+      }
       setPoints(built);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load chunk embeddings.');
@@ -120,7 +186,12 @@ export function ChunkCloud({ sessionId, documents, height = 460, className = '' 
 
   const docCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    points.forEach((p) => counts.set(p.docId, (counts.get(p.docId) ?? 0) + 1));
+    const seenChunks = new Map<string, Set<string>>();
+    points.forEach((p) => {
+      let set = seenChunks.get(p.docId);
+      if (!set) { set = new Set(); seenChunks.set(p.docId, set); }
+      if (!set.has(p.chunkId)) { set.add(p.chunkId); counts.set(p.docId, (counts.get(p.docId) ?? 0) + 1); }
+    });
     return counts;
   }, [points]);
 
@@ -139,7 +210,11 @@ export function ChunkCloud({ sessionId, documents, height = 460, className = '' 
       if (p.y > maxY) maxY = p.y;
     }
     const pad = 48;
-    return { pad, minX, minY, spanX: maxX - minX || 1, spanY: maxY - minY || 1 };
+    const spanX = maxX - minX;
+    const spanY = maxY - minY;
+    // A one-dimensional projection is valid data but should remain legible;
+    // keep its actual axis while providing a bounded visual axis for canvas fit.
+    return { pad, minX, minY, spanX: spanX || 1, spanY: spanY || 1 };
   }, [filtered]);
 
   const draw = useCallback(() => {
@@ -167,23 +242,60 @@ export function ChunkCloud({ sessionId, documents, height = 460, className = '' 
     const offY = pad + (drawH - spanY * scale) / 2 + view.ty;
 
     const screen: Array<{ p: ChunkPoint; sx: number; sy: number }> = [];
+    const byChunk = new Map<string, Array<{ sx: number; sy: number; color: string }>>();
     for (const p of filtered) {
       const sx = offX + (p.x - minX) * scale;
       const sy = offY + (p.y - minY) * scale;
       screen.push({ p, sx, sy });
+      let members = byChunk.get(p.chunkId);
+      if (!members) { members = []; byChunk.set(p.chunkId, members); }
+      members.push({ sx, sy, color: p.color });
+    }
+
+    // Draw document chunk cluster outlines: a subtle luminous ring around each
+    // real chunk's 10 sub-points, using the document's color. Never invents
+    // clusters -- one ring per real chunk, centered on its actual sub-points.
+    ctx.save();
+    for (const members of byChunk.values()) {
+      let cx = 0, cy = 0;
+      const color = members[0].color;
+      for (const m of members) { cx += m.sx; cy += m.sy; }
+      cx /= members.length; cy /= members.length;
+      let r2 = 0;
+      for (const m of members) { const dx = m.sx - cx, dy = m.sy - cy; r2 += dx * dx + dy * dy; }
+      const r = Math.max(7, Math.sqrt(r2 / members.length) * 1.75);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.22;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.05;
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Render sub-points (glass markers linked to their parent chunk).
+    for (const { p, sx, sy } of screen) {
+      const r = 2.6;
       const isHover = hover?.id === p.id;
       const isSel = selected?.id === p.id;
-      const r = isSel ? 6 : isHover ? 5 : 2.6;
       ctx.beginPath();
       ctx.arc(sx, sy, r, 0, Math.PI * 2);
       ctx.fillStyle = p.color;
-      ctx.globalAlpha = isSel || isHover ? 1 : 0.7;
+      ctx.globalAlpha = isSel || isHover ? 1 : 0.72;
       ctx.fill();
       if (isSel || isHover) {
         ctx.globalAlpha = 1;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = isSel ? 12 : 8;
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.6;
         ctx.stroke();
+        ctx.shadowBlur = 0;
       }
     }
     ctx.globalAlpha = 1;
@@ -312,7 +424,7 @@ export function ChunkCloud({ sessionId, documents, height = 460, className = '' 
           </div>
         )}
         <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-slate-500">
-          {filtered.length} chunks · scroll to zoom · drag to pan · click a point for details
+          {new Set(filtered.map((p) => p.chunkId)).size} real chunks · {filtered.length} markers (10 per chunk) · scroll to zoom · drag to pan · click a point for details
         </div>
       </div>
 

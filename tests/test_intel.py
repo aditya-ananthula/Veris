@@ -1,4 +1,4 @@
-"""Phase 3 tests: structured extraction, persistence, provenance, resolution."""
+﻿"""Phase 3 tests: structured extraction, persistence, provenance, resolution."""
 import json
 import uuid
 
@@ -165,8 +165,8 @@ def test_intel_api_endpoints(monkeypatch, tmp_path):
     bad = c.get("/intel/facts", params={"session_id": "not-a-uuid"})
     assert bad.status_code == 400
     # no secret leakage in intel responses
-    assert "GROQ_API_KEY" not in c.get("/capabilities").text
-    assert "GROQ_API_KEY" not in facts.text
+    assert "NVIDIA_API_KEY" not in c.get("/capabilities").text
+    assert "NVIDIA_API_KEY" not in facts.text
 
 
 def _absorb(c, sid, filename, text):
@@ -190,11 +190,11 @@ def test_ask_provider_failure_returns_502_not_500(monkeypatch, tmp_path):
     def boom_client():
         raise ValueError("upstream provider exploded")  # not RuntimeError
 
-    monkeypatch.setattr(rag_core, "_get_groq_client", boom_client)
+    monkeypatch.setattr(rag_core, "_get_nvidia_client", boom_client)
     r = c.post("/ask", json={"question": "what skills do i have", "session_id": sid})
     assert r.status_code == 502, r.text
     body = r.json()
-    assert "GROQ_API_KEY" not in r.text
+    assert "NVIDIA_API_KEY" not in r.text
     assert "stack" not in r.text.lower() and "traceback" not in r.text.lower()
 
 

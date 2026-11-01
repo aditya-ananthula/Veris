@@ -16,7 +16,7 @@ export interface Capabilities {
   max_upload_bytes: number;
   max_upload_mb: number;
   llm_model: string;
-  groq_configured: boolean;
+  nvidia_configured: boolean;
   session_ttl_seconds: number;
   persistence: string;
   features: string[];
@@ -25,7 +25,7 @@ export interface Capabilities {
 export interface Health {
   status: string;
   app: string;
-  groq_configured: boolean;
+  nvidia_configured: boolean;
   model: string;
 }
 

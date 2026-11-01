@@ -54,7 +54,7 @@ class AbsorbResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     app: str
-    groq_configured: bool
+    nvidia_configured: bool
     model: str
 
 
@@ -63,7 +63,7 @@ class CapabilitiesResponse(BaseModel):
     max_upload_bytes: int
     max_upload_mb: float
     llm_model: str
-    groq_configured: bool
+    nvidia_configured: bool
     session_ttl_seconds: int
     persistence: str
     features: list[str]
@@ -144,8 +144,8 @@ def health():
     return {
         "status": "ok",
         "app": config.APP_NAME,
-        "groq_configured": config.has_groq_key(),
-        "model": config.GROQ_MODEL,
+        "nvidia_configured": config.has_nvidia_key(),
+        "model": config.NVIDIA_MODEL,
     }
 
 
@@ -155,8 +155,8 @@ def capabilities():
         "supported_extensions": sorted(SUPPORTED_EXTENSIONS),
         "max_upload_bytes": MAX_UPLOAD_BYTES,
         "max_upload_mb": round(MAX_UPLOAD_BYTES / (1024 * 1024), 1),
-        "llm_model": config.GROQ_MODEL,
-        "groq_configured": config.has_groq_key(),
+        "llm_model": config.NVIDIA_MODEL,
+        "nvidia_configured": config.has_nvidia_key(),
         "session_ttl_seconds": config.SESSION_TTL_SECONDS,
         "persistence": "ephemeral-in-memory",
         "features": [
@@ -176,7 +176,7 @@ def ask(payload: Question):
     try:
         return rag_core.ask_question(payload.question, _profile_id(payload.session_id))
     except RuntimeError as e:
-        # Missing Groq key / provider misconfiguration -> 502, no secret leakage.
+        # Missing NVIDIA key / provider misconfiguration -> 502, no secret leakage.
         raise HTTPException(status_code=502, detail=str(e))
 
 @app.get("/documents", response_model=DocumentsResponse)
@@ -436,6 +436,14 @@ class ChunkCloudResponse(BaseModel):
 def intel_chunks(session_id: str, doc_id: str | None = None):
     """Return all chunks with embeddings for a session, used by the Chunk Cloud."""
     profile_id = _profile_id(session_id)
+    # Chroma stores the filename as `source`; the intelligence store uses a
+    # stable content/version id. Resolve that boundary here so chunk filters,
+    # legends, and document-detail routes all use the same document identity.
+    document_ids = {
+        str(document.get("filename", "")): str(document.get("doc_id", ""))
+        for document in _intel().list_documents(profile_id)
+        if document.get("status") != "superseded"
+    }
     collection = rag_core._get_collection(profile_id)
     count = collection.count()
     if count == 0:
@@ -447,6 +455,7 @@ def intel_chunks(session_id: str, doc_id: str | None = None):
     documents = stored.get("documents") or []
     metadatas = stored.get("metadatas") or []
     ids = stored.get("ids") or []
+    chunk_indexes: dict[str, int] = {}
     for i, (cid, text, meta) in enumerate(zip(ids, documents, metadatas)):
         emb = embeddings[i] if i < len(embeddings) else None
         if emb is not None and hasattr(emb, "tolist"):
@@ -454,16 +463,18 @@ def intel_chunks(session_id: str, doc_id: str | None = None):
         elif emb is not None:
             emb = list(emb)
         meta = meta or {}
-        doc_key = str(meta.get("document_key", meta.get("source", "")))
         source_name = str(meta.get("source", ""))
-        if doc_id and doc_id not in (doc_key, source_name):
+        resolved_doc_id = document_ids.get(source_name, source_name)
+        if doc_id and doc_id not in (resolved_doc_id, source_name):
             continue
+        chunk_index = chunk_indexes.get(source_name, 0)
+        chunk_indexes[source_name] = chunk_index + 1
         chunks.append({
             "id": cid,
             "text": text or "",
-            "docId": doc_key,
+            "docId": resolved_doc_id,
             "docFilename": source_name,
-            "chunkIndex": i,
+            "chunkIndex": chunk_index,
             "embedding": emb,
         })
     return {"chunks": chunks, "total": len(chunks)}

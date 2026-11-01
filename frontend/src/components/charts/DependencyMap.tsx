@@ -1,123 +1,128 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { Network, Eye } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Maximize, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import type { DependencyGraph, DependencyNode } from '../../types';
 
 interface DependencyMapProps {
   graph: DependencyGraph;
   height?: number;
   className?: string;
+  selectedId?: string;
+  onSelect?: (id: string) => void;
 }
 
-const NODE_R = 30;
-const NODE_R_HOVER = 38;
 type Point = { x: number; y: number; vx: number; vy: number };
+const TYPE_COLORS: Record<string, string> = { person: '#67e8f9', organization: '#a78bfa', location: '#fbbf24', product: '#fb7185', concept: '#22d3ee', policy: '#6ee7b7', date: '#f59e0b', unknown: '#94a3b8' };
+const colorFor = (type: string) => TYPE_COLORS[type.toLowerCase()] ?? TYPE_COLORS.unknown;
+const CONVERGE_SPEED = 0.012;
 
-export function DependencyMap({ graph, height = 320, className = '' }: DependencyMapProps) {
-  const [nodes, setNodes] = useState<Point[]>([]);
-  const [hoverNode, setHoverNode] = useState<number | null>(null);
-  const [dragNode, setDragNode] = useState<number | null>(null);
-  const [dragPoint, setDragPoint] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const widthRef = { current: 0 };
-  useEffect(() => {
-    if (!graph.nodes.length) return;
-    const radius = Math.min(widthRef.current || 400, height) * 0.32;
-    const initial = graph.nodes.map((_, i: number) => {
-      const angle = (i / graph.nodes.length) * 2 * Math.PI;
-      return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.4 };
-    });
-    setNodes(initial);
-  }, [graph.nodes.length, height]);
-  useEffect(() => { setHoverNode(null); setDragNode(null); }, [graph.nodes.length]);
+function finite(n: number): number { return Number.isFinite(n) ? n : 0; }
 
-  const simulate = useCallback(() => {
-    if (!graph.nodes.length || !graph.edges.length) return;
-    const next = nodes.map((n) => ({ ...n }));
-    const k = 0.02, damping = 0.88;
-    for (const e of graph.edges) {
-      const sIdx = graph.nodes.findIndex((n: { id: string }) => n.id === e.source);
-      const tIdx = graph.nodes.findIndex((n: { id: string }) => n.id === e.target);
-      if (sIdx < 0 || tIdx < 0) continue;
-      const s = next[sIdx], t = next[tIdx];
-      const dx = t.x - s.x, dy = t.y - s.y, dist = Math.hypot(dx, dy) || 1;
-      const force = (dist - 90) * k, fx = (dx / dist) * force, fy = (dy / dist) * force;
-      s.vx -= fx; s.vy -= fy; t.vx += fx; t.vy += fy;
-    }
-    for (let i = 0; i < next.length; i++) {
-      const n = next[i];
-      n.vx -= n.x * 0.015; n.vy -= n.y * 0.015;
-      n.vx *= damping; n.vy *= damping; n.x += n.vx; n.y += n.vy;
-      if (dragNode === i) { n.x = dragPoint.x; n.y = dragPoint.y; n.vx = 0; n.vy = 0; }
-    }
-    setNodes(next);
-    requestAnimationFrame(simulate);
-  }, [nodes, graph.nodes, graph.edges, dragNode, dragPoint]);
-
-  const rafRef = useRef(0);
-  useEffect(() => { rafRef.current = requestAnimationFrame(simulate); return () => cancelAnimationFrame(rafRef.current); }, [simulate]);
-
-  const nodeColor = (type: unknown) => ({ person: '#7fe3ff', organization: '#b79cff', location: '#ffc3a0', product: '#ff7b9c', policy: '#7fe3a8', unknown: '#94a3b8' }[(typeof type === 'string' ? type : 'unknown').toLowerCase()] ?? '#94a3b8');
-  const statusColor = (status: string) => (status === 'resolved' || status === 'validated' ? '#10b981' : status === 'disputed' || status === 'failed' ? '#ef4444' : status === 'uncertain' || status === 'pending' || status === 'extracting' ? '#f59e0b' : '#64748b');
-  const cx = (widthRef.current / 2) || 200;
+/** Deterministic spiral initial positions — never all at origin. */
+function initialPositions(count: number, width: number, height: number): Point[] {
+  const out: Point[] = [];
+  const cx = width / 2;
   const cy = height / 2;
+  const radius = Math.min(width, height) * 0.34;
+  for (let i = 0; i < count; i++) {
+    const phi = i * 2.39996323;
+    const r = radius * Math.sqrt((i + 1) / Math.max(count, 1));
+    out.push({ x: finite(cx + Math.cos(phi) * r), y: finite(cy + Math.sin(phi) * r), vx: 0, vy: 0 });
+  }
+  return out;
+}
 
-  const onNodeMove = (e: React.MouseEvent, i: number) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setDragPoint({ x: e.clientX - rect.left - cx, y: e.clientY - rect.top - cy });
-    setDragNode(i);
-  };
+export function DependencyMap({ graph, height = 460, className = '', selectedId = '', onSelect }: DependencyMapProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [width, setWidth] = useState(760);
+  const [points, setPoints] = useState<Point[]>([]);
+  const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
+  const [drag, setDrag] = useState<{ node: number | null; x: number; y: number; tx: number; ty: number } | null>(null);
+  const [hoverId, setHoverId] = useState('');
+  const nodeIndex = useMemo(() => new Map(graph.nodes.map((node, index) => [node.id, index])), [graph.nodes]);
+  const positionsRef = useRef<Point[]>([]);
+  const settledRef = useRef(false);
 
-  return (
-    <div className={`relative w-full min-h-[300px] ${className}`} style={{ height }}>
-      <div className="absolute -top-3 left-2 flex items-center gap-2">
-        <Network size={16} className="text-accent-400" />
-        <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">Entity dependency map</span>
-        <button className="ml-auto inline-flex items-center gap-1 rounded border border-ink-700 bg-ink-900 px-2 py-0.5 text-xs text-slate-300 hover:text-white" onClick={() => setDragNode(null)} title="Release node">
-          <Eye size={12} /> Free node
-        </button>
-      </div>
-      <svg width="100%" height={height} className="w-full h-full" ref={(el) => { if (el) widthRef.current = el.clientWidth; }}
-        onMouseMove={(e) => { if (dragNode !== null) { const r = e.currentTarget.getBoundingClientRect(); setDragPoint({ x: e.clientX - r.left - cx, y: e.clientY - r.top - cy }); } }}
-        onMouseUp={() => setDragNode(null)}
-      >
-        {graph.edges.map((e: { id: string; source: string; target: string }) => {
-          const sIdx = graph.nodes.findIndex((n: { id: string }) => n.id === e.source);
-          const tIdx = graph.nodes.findIndex((n: { id: string }) => n.id === e.target);
-          if (sIdx < 0 || tIdx < 0) return null;
-          const s = nodes[sIdx], t = nodes[tIdx];
-          if (!s || !t) return null;
-          const dx = t.x - s.x, dy = t.y - s.y, dist = Math.hypot(dx, dy) || 1;
-          const nx = -dy / dist, ny = dx / dist;
-          const hovered = hoverNode === sIdx || hoverNode === tIdx;
-          return (
-            <path key={e.id} d={`M ${cx + s.x} ${cy + s.y} Q ${cx + (s.x + t.x) / 2 + nx * 22} ${cy + (s.y + t.y) / 2 + ny * 22} ${cx + t.x} ${cy + t.y}`}
-              fill="none" stroke={hovered ? '#a855f7' : 'rgba(139,124,246,0.25)'} strokeWidth={hovered ? 2.5 : 1.5} strokeLinecap="round"
-              className="transition-all duration-300" style={{ filter: hovered ? 'drop-shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'none' }}
-              onMouseEnter={() => setHoverNode(sIdx)} onMouseLeave={() => setHoverNode(null)} />
-          );
-        })}
-        {graph.nodes.map((n: DependencyNode, i: number) => {
-          const hovered = i === hoverNode;
-          const r = hovered ? NODE_R_HOVER : NODE_R;
-          const pos = nodes[i] ?? { x: 0, y: 0 };
-          return (
-            <g key={n.id} transform={`translate(${cx + pos.x}, ${cy + pos.y})`}
-              onMouseMove={(e) => onNodeMove(e, i)} onMouseDown={(e) => { e.stopPropagation(); onNodeMove(e, i); }}
-              className="cursor-grab active:cursor-grabbing">
-              <circle r={r} fill={nodeColor(n.type)} fillOpacity={0.12} stroke={nodeColor(n.type)} strokeWidth={2} className="transition-all duration-300" style={{ filter: hovered ? 'drop-shadow-[0_0_16px_rgba(255,255,255,0.15)]' : 'none' }} />
-              <circle r={6} fill={statusColor(n.status)} />
-              <text x={0} y={-r - 8} textAnchor="middle" fill="#c5c9d4" fontSize="11" fontWeight="600" className={`transition-all ${hovered ? 'text-white drop-shadow-[0_0_6px_rgba(0,0,0,0.6)]' : ''}`} pointerEvents="none">{n.label}</text>
-              <text x={0} y={r + 16} textAnchor="middle" fill="#64748b" fontSize="10" pointerEvents="none">{n.factCount} facts</text>
-            </g>
-          );
-        })}
-      </svg>
-      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 text-[10px] text-slate-500">
-        <span>Nodes: {graph.nodes.length}</span><span>·</span><span>Edges: {graph.edges.length}</span>
-        <span className="text-xs">Drag a node · hover edge/nodes to highlight</span>
-      </div>
-    </div>
-  );
+  useEffect(() => {
+    const measure = () => setWidth(Math.max(320, svgRef.current?.clientWidth || 760));
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (svgRef.current) observer.observe(svgRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (graph.nodes.length === 0) { setPoints([]); return; }
+    const next = initialPositions(graph.nodes.length, width, height);
+    positionsRef.current = next;
+    setPoints(next);
+    setView({ scale: 1, tx: 0, ty: 0 });
+    settledRef.current = false;
+  }, [graph.nodes, width, height]);
+
+    const tick = useCallback(() => {
+    if (points.length === 0 || points.length !== graph.nodes.length || settledRef.current) return;
+    const next = points.map((p) => ({ ...p, vx: finite(p.vx), vy: finite(p.vy) }));
+    const halfW = width / 2 - 36;
+    const halfH = height / 2 - 44;
+
+    for (let i = 0; i < next.length; i++) {
+      const a = next[i];
+      for (let j = i + 1; j < next.length; j++) {
+        const b = next[j];
+        const dx = b.x - a.x || 0.01; const dy = b.y - a.y || 0.01;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const force = Math.min(12, 900 / (distance * distance));
+        const fx = (dx / distance) * force; const fy = (dy / distance) * force;
+        a.vx -= fx; a.vy -= fy; b.vx += fx; b.vy += fy;
+      }
+    }
+
+    graph.edges.forEach((edge) => {
+      const source = nodeIndex.get(edge.source); const target = nodeIndex.get(edge.target);
+      if (source === undefined || target === undefined) return;
+      const a = next[source]; const b = next[target];
+      const dx = b.x - a.x; const dy = b.y - a.y;
+      const distance = Math.max(1, Math.hypot(dx, dy));
+      const force = (distance - 110) * 0.01;
+      a.vx += (dx / distance) * force; a.vy += (dy / distance) * force;
+      b.vx -= (dx / distance) * force; b.vy -= (dy / distance) * force;
+    });
+
+    let maxMove = 0;
+    next.forEach((point, index) => {
+      if (drag?.node === index) return;
+      point.vx = (point.vx - point.x * 0.012) * 0.8;
+      point.vy = (point.vy - point.y * 0.012) * 0.8;
+      point.x = finite(Math.max(-halfW, Math.min(halfW, point.x + point.vx)));
+      point.y = finite(Math.max(-halfH, Math.min(halfH, point.y + point.vy)));
+      maxMove = Math.max(maxMove, Math.abs(point.vx), Math.abs(point.vy));
+    });
+
+    setPoints(next);
+    if (maxMove < CONVERGE_SPEED && !drag?.node) settledRef.current = true;
+    else requestAnimationFrame(tick);
+  }, [points, graph.edges, width, height, drag?.node, nodeIndex]);
+
+  useEffect(() => { requestAnimationFrame(tick); }, [tick]);
+
+  const toGraph = useCallback((event: React.MouseEvent<SVGSVGElement | SVGGElement>) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return { x: (event.clientX - rect.left - rect.width / 2 - view.tx) / view.scale, y: (event.clientY - rect.top - rect.height / 2 - view.ty) / view.scale };
+  }, [view]);
+  const reset = useCallback(() => { settledRef.current = false; setView({ scale: 1, tx: 0, ty: 0 }); }, []);
+  const visibleEdges = graph.edges.filter((edge) => nodeIndex.has(edge.source) && nodeIndex.has(edge.target));
+
+  return <div className={`relative w-full ${className}`}>
+    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1"><p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Entity network</p><div className="flex items-center gap-1"><button onClick={() => setView((current) => ({ ...current, scale: Math.min(3, current.scale * 1.2) }))} className="veris-btn-ghost" aria-label="Zoom in"><ZoomIn size={13} /></button><button onClick={() => setView((current) => ({ ...current, scale: Math.max(0.5, current.scale / 1.2) }))} className="veris-btn-ghost" aria-label="Zoom out"><ZoomOut size={13} /></button><button onClick={reset} className="veris-btn-ghost" title="Fit view"><Maximize size={13} /></button><button onClick={reset} className="veris-btn-ghost" title="Reset view"><RotateCcw size={13} /></button></div></div>
+    <svg ref={svgRef} width="100%" height={height} className="block w-full rounded-xl border border-slate-700/40 bg-slate-950/40" onMouseMove={(event) => { if (!drag) return; if (drag.node !== null) { const point = toGraph(event); setPoints((current) => current.map((item, index) => index === drag.node ? { ...item, x: point.x, y: point.y, vx: 0, vy: 0 } : item)); } else setView((current) => ({ ...current, tx: drag.tx + event.clientX - drag.x, ty: drag.ty + event.clientY - drag.y })); }} onMouseUp={() => setDrag(null)} onMouseLeave={() => setDrag(null)} onMouseDown={(event) => setDrag({ node: null, x: event.clientX, y: event.clientY, tx: view.tx, ty: view.ty })}>
+      <g transform={`translate(${width / 2 + view.tx} ${height / 2 + view.ty}) scale(${view.scale})`}>
+        {visibleEdges.map((edge) => { const source = points[nodeIndex.get(edge.source)!]; const target = points[nodeIndex.get(edge.target)!]; if (!source || !target) return null; const highlighted = selectedId === edge.source || selectedId === edge.target || hoverId === edge.source || hoverId === edge.target; return <line key={edge.id} x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke={highlighted ? '#a78bfa' : 'rgba(139,124,246,.26)'} strokeWidth={highlighted ? 2 : 1.15} />; })}
+        {graph.nodes.map((node: DependencyNode, index) => { const point = points[index]; if (!point) return null; const active = selectedId === node.id; const hovered = hoverId === node.id; const color = colorFor(node.type); const radius = active ? 18 : hovered ? 16 : 13; return <g key={node.id} transform={`translate(${point.x} ${point.y})`} className="cursor-pointer" onMouseDown={(event) => { event.stopPropagation(); setDrag({ node: index, x: event.clientX, y: event.clientY, tx: view.tx, ty: view.ty }); }} onMouseEnter={() => setHoverId(node.id)} onMouseLeave={() => setHoverId('')} onClick={() => onSelect?.(node.id)}><defs><radialGradient id={`entGrad-${node.id}`} cx="30%" cy="30%" r="70%"><stop offset="0%" stopColor="#ffffff" stopOpacity={active ? 0.4 : hovered ? 0.32 : 0.26} /><stop offset="55%" stopColor={color} stopOpacity={0.5} /><stop offset="100%" stopColor={color} stopOpacity={0} /></radialGradient></defs><circle r={radius + 5} fill="none" stroke={color} strokeOpacity={active ? 0.35 : hovered ? 0.25 : 0.12} strokeWidth={2} className="transition-all" /><circle r={radius} fill={`url(#entGrad-${node.id})`} stroke={color} strokeWidth={active ? 3 : hovered ? 2.5 : 1.5} fillOpacity={active ? 0.22 : hovered ? 0.17 : 0.12} className="transition-all" /><circle r={radius * 0.4} cx={-radius * 0.35} cy={-radius * 0.35} fill="#ffffff" fillOpacity={active ? 0.45 : hovered ? 0.38 : 0.32} className="transition-all" /><text y={-radius - 12} textAnchor="middle" fill={active ? '#ffffff' : hovered ? '#e2e8f0' : '#b4c2d9'} fontSize="11" fontWeight="700" letterSpacing="0.02em" className="transition-all" pointerEvents="none">{node.label.length > 24 ? `${node.label.slice(0, 23)}…` : node.label}</text><text y={radius + 16} textAnchor="middle" fill="#94a3b8" fontSize="10" fontWeight="600" pointerEvents="none">{node.factCount} mentions</text></g>; })}
+      </g>
+    </svg>
+    <p className="mt-2 text-center text-[11px] text-slate-500">{graph.nodes.length} entities · {visibleEdges.length} verified relationships · drag to arrange, drag empty space to pan</p>
+  </div>;
 }
 
 export default DependencyMap;
-

@@ -1,3 +1,4 @@
+﻿import logging
 import os
 import re
 import hashlib
@@ -8,17 +9,20 @@ import xml.etree.ElementTree as ET
 from pypdf import PdfReader
 import chromadb
 from dotenv import load_dotenv
-from groq import Groq
+from openai import OpenAI
 from streamlit.errors import StreamlitSecretNotFoundError
 
 load_dotenv()
 
+logger = logging.getLogger("veris.rag_core")
+
 import config as _veris_config
 
 DISTANCE_THRESHOLD = _veris_config.DISTANCE_THRESHOLD
-GROQ_MODEL = _veris_config.GROQ_MODEL
-groq_client = None
-groq_client_key = None
+NVIDIA_MODEL = _veris_config.NVIDIA_MODEL
+NVIDIA_BASE_URL = os.environ.get("VERIS_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+nvidia_client = None
+nvidia_client_key = None
 
 _chroma_client = None
 _chroma_persist_dir = None
@@ -63,27 +67,29 @@ def _get_collection(session_id):
     collection.modify(metadata={"last_accessed": now})
     return collection
 
-def _get_groq_client():
-    global groq_client, groq_client_key
+def _get_nvidia_client():
+    global nvidia_client, nvidia_client_key
 
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
         try:
             import streamlit as st
 
-            api_key = st.secrets.get("GROQ_API_KEY")
+            api_key = st.secrets.get("NVIDIA_API_KEY")
         except StreamlitSecretNotFoundError:
             api_key = None
 
     if not api_key:
+        logger.error("NVIDIA_API_KEY not configured: key_loaded=False base_url=%s", NVIDIA_BASE_URL)
         raise RuntimeError(
-            "The hosted LLM is not configured. Add GROQ_API_KEY to the app's secrets."
+            "The hosted LLM is not configured. Add NVIDIA_API_KEY to the app's secrets."
         )
 
-    if groq_client is None or groq_client_key != api_key:
-        groq_client = Groq(api_key=api_key)
-        groq_client_key = api_key
-    return groq_client
+    if nvidia_client is None or nvidia_client_key != api_key:
+        logger.info("Initializing NVIDIA client: key_loaded=True base_url=%s model=%s", NVIDIA_BASE_URL, NVIDIA_MODEL)
+        nvidia_client = OpenAI(api_key=api_key, base_url=NVIDIA_BASE_URL)
+        nvidia_client_key = api_key
+    return nvidia_client
 
 def _chat(messages):
     """Chat completion with safe failure handling.
@@ -95,8 +101,8 @@ def _chat(messages):
     messages, and the failure is never silently converted into an answer.
     """
     try:
-        client = _get_groq_client()
-        response = client.chat.completions.create(model=GROQ_MODEL, messages=messages)
+        client = _get_nvidia_client()
+        response = client.chat.completions.create(model=NVIDIA_MODEL, messages=messages)
         content = response.choices[0].message.content
         if content is None:
             raise RuntimeError("language model returned an empty response")
@@ -104,6 +110,8 @@ def _chat(messages):
     except RuntimeError:
         raise
     except Exception as exc:  # provider errors, timeouts, malformed responses
+        _detail = re.sub(r"nvapi-[A-Za-z0-9_-]+", "[REDACTED_KEY]", str(exc))
+        logger.error("NVIDIA chat/completions failed: model=%s base_url=%s error=%s", NVIDIA_MODEL, NVIDIA_BASE_URL, _detail)
         raise RuntimeError(
             f"language model request failed: {type(exc).__name__}"
         ) from exc
@@ -352,7 +360,11 @@ def ask_question(question, session_id):
 
     context = "\n\n".join([c for c, d in filtered])
 
-    prompt = f"""Answer the question using ONLY the context below. If the answer isn't in the context, say "I don't know based on the provided documents."
+    prompt = f"""You are a careful research assistant. Answer using ONLY the context below.
+Be natural, concise, and direct. Use plain paragraphs and short bullet lists only when they help.
+Do NOT invent facts, citations, page numbers, or quotations. Avoid headings like "Topics are as follows"
+and avoid excessive bolding or repetitive labels. If the answer is not in the context, say exactly:
+"I don't know based on the provided documents."
 
 Context:
 {context}
@@ -360,6 +372,7 @@ Context:
 Question: {question}
 
 Answer:"""
+
 
     answer_text = _chat([{"role": "user", "content": prompt}])
 
