@@ -21,6 +21,7 @@ origins = config.ALLOWED_ORIGINS or [
     "http://localhost:3000",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:3000",
+    "https://veris-tnmw.onrender.com"
 ]
 app.add_middleware(
     CORSMiddleware,
