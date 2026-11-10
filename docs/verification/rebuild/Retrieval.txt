@@ -1,0 +1,1 @@
+Acme uses Python to process 5 projects. Retrieval indexes source passages in a persistent vector store.

@@ -40,23 +40,30 @@ async function parseError(res: Response): Promise<string> {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit, timeoutMs = 120000): Promise<T> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}${path}`, { ...init, signal: ctrl.signal });
-  } catch (e) {
-    throw new Error(
-      e instanceof DOMException && e.name === 'AbortError'
-        ? 'Request timed out. The backend may be busy embedding documents.'
-        : 'Backend unavailable. Start FastAPI with `uvicorn api:app --reload` on port 8000.',
-    );
-  } finally {
+async function request<T>(path: string, init?: RequestInit, timeoutMs = 120000, retries = 2): Promise<T> {
+  if (init?.method && init.method !== 'GET') retries = 0;
+  let lastErr: Error | undefined;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${path}`, { ...init, signal: ctrl.signal });
+    } catch (e) {
+      lastErr = e instanceof DOMException && e.name === 'AbortError'
+        ? new Error('Request timed out. The backend may be busy embedding documents.')
+        : new Error('Unable to reach Veris. Check your connection and try again.');
+      clearTimeout(timer);
+      if (attempt < retries) continue;
+      throw lastErr;
+    }
     clearTimeout(timer);
+    if (res.ok) return (await res.json()) as T;
+    lastErr = new ApiError(res.status, await parseError(res));
+    if (res.status >= 500 && attempt < retries) continue;
+    throw lastErr;
   }
-  if (!res.ok) throw new ApiError(res.status, await parseError(res));
-  return (await res.json()) as T;
+  throw lastErr!;
 }
 
 export const api = {
@@ -66,11 +73,11 @@ export const api = {
     request<{ documents: string[] }>(`/documents?session_id=${encodeURIComponent(sessionId)}`),
   documentsMeta: (sessionId: string) =>
     request<DocumentMeta[]>(`/documents/meta?session_id=${encodeURIComponent(sessionId)}`),
-  ask: (question: string, sessionId: string) =>
+  ask: (question: string, sessionId: string, history: {role: string; content: string}[] = [], docId?: string) =>
     request<AskResult>('/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, session_id: sessionId }),
+      body: JSON.stringify({ question, session_id: sessionId, history: history.slice(-10), doc_id: docId }),
     }),
   absorb: (file: File, sessionId: string) => {
     const form = new FormData();
@@ -150,5 +157,10 @@ export const api = {
       docFilename: string;
       chunkIndex: number;
       embedding: number[] | null;
-    }>; total: number }>(`/intel/chunks?session_id=${encodeURIComponent(sessionId)}`),
+      projection?: number[] | null;
+      page?: number | null;
+      kind?: string;
+    }>; total: number }>(`/intel/chunk-projection?session_id=${encodeURIComponent(sessionId)}`),
 };
+
+export const sourceUrl = (session: string, doc: string, page?: number | null) => `${API_BASE}/intel/source/${encodeURIComponent(doc)}?session_id=${encodeURIComponent(session)}${page ? '#page=' + page : ''}`;

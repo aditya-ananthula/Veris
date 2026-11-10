@@ -1,0 +1,21 @@
+{
+  "data/veris.db": {
+    "integrity": "ok",
+    "documents": 540,
+    "facts": 426,
+    "entities": 448,
+    "relationships": 165,
+    "facts_without_document": 20,
+    "relationships_without_document": 12
+  },
+  "data/vectors/chroma.sqlite3": {
+    "integrity": "ok",
+    "embeddings": 60,
+    "collections": 1
+  },
+  "chroma_db/chroma.sqlite3": {
+    "integrity": "ok",
+    "embeddings": 40,
+    "collections": 3
+  }
+}

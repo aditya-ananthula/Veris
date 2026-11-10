@@ -1,0 +1,46 @@
+{
+  "checks": [
+    {
+      "name": "Batch upload and indexing",
+      "pass": true
+    },
+    {
+      "name": "Structured extraction",
+      "pass": true
+    },
+    {
+      "name": "Answer evidence opens",
+      "pass": true
+    },
+    {
+      "name": "Attachment bytes uploaded before answer",
+      "pass": true
+    },
+    {
+      "name": "Comparison with claim evidence",
+      "pass": true
+    },
+    {
+      "name": "Contradiction scan with both source excerpts",
+      "pass": true
+    },
+    {
+      "name": "Graph inspector backed by uploaded documents",
+      "pass": true
+    },
+    {
+      "name": "Chunk source filter and inspection",
+      "pass": true
+    },
+    {
+      "name": "Entity source evidence",
+      "pass": true
+    },
+    {
+      "name": "Deletion and empty library",
+      "pass": false
+    }
+  ],
+  "errors": [],
+  "provider": "Deterministic test LLM; real FastAPI, Chroma embeddings and SQLite."
+}

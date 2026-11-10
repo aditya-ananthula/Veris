@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, ValidationError
 import config
 import intel_store
 
-ALLOWED_TYPES = {"person", "org", "product", "location", "date", "money", "metric", "unknown"}
+ALLOWED_TYPES = {"person", "org", "organization", "concept", "technology", "product", "location", "date", "money", "metric", "unknown"}
 ALLOWED_VALUE_TYPES = {"string", "number", "date", "money", "boolean"}
 ALLOWED_STATUS = {"validated", "uncertain", "disputed"}
 
@@ -168,11 +168,6 @@ def extract_deterministic(text, max_facts=20, max_entities=15):
                 if src.lower() == dst.lower():
                     continue
                 rel_type = "mentioned_with"
-                sent_lower = sent.lower()
-                for trigger, rname in COMMON_VERBS:
-                    if trigger in sent_lower:
-                        rel_type = rname
-                        break
                 relationships.append(ExtractedRelationship(
                     src=src, rel_type=rel_type, dst=dst, evidence=sent
                 ))
@@ -188,6 +183,7 @@ _PROMPT = """Extract structured knowledge from the DOCUMENT below as strict JSON
 Rules:
 - Only facts explicitly stated in the document. Never invent values.
 - Keep entities to clearly named people, orgs, products, locations. Skip vague mentions.
+- Relationships must preserve the subject as src and object as dst. Use mentioned_with only for symmetric co-occurrence. Never infer a directional verb from co-occurrence.
 - Each fact needs verbatim evidence copied from the document (1-2 sentences max).
 - If nothing extractable, return empty arrays. Max {max_facts} facts, {max_entities} entities.
 - confidence 0-1; mark uncertain extractions below 0.6.
@@ -330,7 +326,7 @@ def run_extraction(session_id, doc_id, filename, document_text, llm_caller=None,
 
     fact_rows = []
     for fact in result.facts[:25]:
-        if fact.evidence.strip() not in (document_text or ""):
+        if not fact.evidence.strip() or fact.evidence.strip() not in (document_text or ""):
             # Evidence must appear in the source; otherwise mark uncertain, never invent.
             status, note = "uncertain", "evidence-not-verbatim-in-source"
         else:
@@ -351,7 +347,7 @@ def run_extraction(session_id, doc_id, filename, document_text, llm_caller=None,
     for rel in result.relationships[:25]:
         src = entity_ids.get(intel_store.normalize_name(rel.src))
         dst = entity_ids.get(intel_store.normalize_name(rel.dst))
-        if not src or not dst or src == dst:
+        if not src or not dst or src == dst or not rel.evidence.strip() or rel.evidence.strip() not in document_text:
             continue  # ambiguous or self-link: do not assert
         rel_rows.append({
             "src_entity_id": src, "rel_type": re.sub(r"[^a-zA-Z0-9_ -]", "", rel.rel_type)[:100] or "related_to",

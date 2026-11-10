@@ -3,7 +3,7 @@
 ChromaDB keeps doing vector retrieval (ephemeral by default, opt-in persistent
 via VERIS_CHROMA_DIR). This module stores everything Chroma cannot: document
 registry with versions + content hashes, validated entities/facts/relationships,
-and per-fact provenance. stdlib sqlite3 only — no new dependency.
+and per-fact provenance. stdlib sqlite3 only â€” no new dependency.
 """
 import hashlib
 import json
@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS documents (
     updated_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_documents_session ON documents(session_id);
+CREATE TABLE IF NOT EXISTS document_sources (
+    doc_id TEXT PRIMARY KEY, content BLOB NOT NULL, size_bytes INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS entities (
     entity_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -112,8 +115,33 @@ def stable_id(*parts):
 def _now():
     return time.time()
 
+
+def _delete_contradictions(conn, doc_id):
+    if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='contradictions'").fetchone():
+        conn.execute("DELETE FROM contradictions WHERE fact_a_id IN (SELECT fact_id FROM facts WHERE doc_id=?) OR fact_b_id IN (SELECT fact_id FROM facts WHERE doc_id=?)", (doc_id, doc_id))
+
+
+def _prune_entities(conn, session_id):
+    conn.execute("""DELETE FROM entities WHERE session_id=?
+        AND entity_id NOT IN (SELECT entity_id FROM facts WHERE entity_id IS NOT NULL)
+        AND entity_id NOT IN (SELECT src_entity_id FROM relationships)
+        AND entity_id NOT IN (SELECT dst_entity_id FROM relationships)""", (session_id,))
+
+
+def save_source(doc_id, content, path=None):
+    init_db(path)
+    with _connect(path) as conn:
+        conn.execute("INSERT OR REPLACE INTO document_sources VALUES (?,?,?)", (doc_id, content, len(content)))
+
+
+def get_source(session_id, doc_id, path=None):
+    init_db(path)
+    with _connect(path) as conn:
+        row = conn.execute("SELECT d.filename, s.content FROM documents d JOIN document_sources s ON d.doc_id=s.doc_id WHERE d.session_id=? AND d.doc_id=? AND d.status!='superseded'", (session_id, doc_id)).fetchone()
+        return dict(row) if row else None
+
 def upsert_document(session_id, filename, extension, content_hash, chunks, status="indexed",
-                    extraction_status="pending", extraction_error=None, path=None):
+                    extraction_status="pending", extraction_error=None, path=None, source_bytes=None):
     """Register a document version. Same (session, filename, hash) -> same doc_id
     (idempotent re-upload). Same name + new hash -> version bump, old facts kept
     under the previous doc_id for change comparison."""
@@ -139,6 +167,8 @@ def upsert_document(session_id, filename, extension, content_hash, chunks, statu
                     (doc_id, session_id, filename, extension, content_hash, version, status,
                      extraction_status, extraction_error, chunks, _now(), _now()),
                 )
+            if source_bytes is not None:
+                conn.execute("INSERT OR REPLACE INTO document_sources VALUES (?,?,?)", (doc_id, source_bytes, len(source_bytes)))
             conn.commit()
             return doc_id
         finally:
@@ -171,9 +201,17 @@ def list_documents(session_id, path=None):
     conn = _connect(path)
     try:
         rows = conn.execute(
-            "SELECT * FROM documents WHERE session_id=? ORDER BY filename COLLATE NOCASE", (session_id,)
+            "SELECT d.*, s.size_bytes, s.doc_id IS NOT NULL AS source_available FROM documents d LEFT JOIN document_sources s ON s.doc_id=d.doc_id WHERE session_id=? ORDER BY created_at DESC", (session_id,)
         ).fetchall()
-        return [dict(r) for r in rows]
+        result = []
+        for row in rows:
+            d = dict(row)
+            facts = conn.execute("SELECT subject, attribute, value, entity_id FROM facts WHERE doc_id=? AND status='validated'", (d['doc_id'],)).fetchall()
+            d['key_topics'] = sorted({f['subject'] for f in facts})[:12]
+            d['entity_count'] = len({f['entity_id'] for f in facts if f['entity_id']})
+            d['summary'] = next((f['value'] for f in facts if f['attribute'] == 'summary'), None)
+            result.append(d)
+        return result
     finally:
         conn.close()
 
@@ -186,11 +224,13 @@ def delete_session_document(session_id, filename, path=None):
             ids = [r["doc_id"] for r in conn.execute(
                 "SELECT doc_id FROM documents WHERE session_id=? AND filename=?", (session_id, filename))]
             for doc_id in ids:
+                _delete_contradictions(conn, doc_id)
                 conn.execute("DELETE FROM relationships WHERE doc_id=?", (doc_id,))
                 conn.execute("DELETE FROM facts WHERE doc_id=?", (doc_id,))
-                if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='contradictions'").fetchone():
-                    conn.execute("DELETE FROM contradictions WHERE fact_a_id=? OR fact_b_id=?", (doc_id, doc_id))
+
+                conn.execute("DELETE FROM document_sources WHERE doc_id=?", (doc_id,))
                 conn.execute("DELETE FROM documents WHERE doc_id=?", (doc_id,))
+            _prune_entities(conn, session_id)
             conn.commit()
             return ids
         finally:
@@ -217,14 +257,15 @@ def supersede_older_versions(session_id, filename, keep_doc_id, path=None):
             ).fetchall()
             ids = [r["doc_id"] for r in rows]
             for doc_id in ids:
+                _delete_contradictions(conn, doc_id)
                 conn.execute("DELETE FROM relationships WHERE doc_id=?", (doc_id,))
                 conn.execute("DELETE FROM facts WHERE doc_id=?", (doc_id,))
-                if conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='contradictions'").fetchone():
-                    conn.execute("DELETE FROM contradictions WHERE fact_a_id=? OR fact_b_id=?", (doc_id, doc_id))
+
                 conn.execute(
                     "UPDATE documents SET status='superseded', updated_at=? WHERE doc_id=?",
                     (_now(), doc_id),
                 )
+            _prune_entities(conn, session_id)
             conn.commit()
             return ids
         finally:
@@ -292,12 +333,13 @@ def save_facts(session_id, doc_id, fact_dicts, path=None):
     with _lock:
         conn = _connect(path)
         try:
+            _delete_contradictions(conn, doc_id)
             conn.execute("DELETE FROM relationships WHERE doc_id=?", (doc_id,))
             conn.execute("DELETE FROM facts WHERE doc_id=?", (doc_id,))
             for f in fact_dicts:
                 fact_id = stable_id(doc_id, f["subject"], f["attribute"], f["value"], f.get("evidence", "")[:80])
                 conn.execute(
-                    "INSERT INTO facts (fact_id, session_id, doc_id, subject, attribute, value, value_type, unit, period, entity_id, evidence, char_start, char_end, status, validation_notes, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT OR IGNORE INTO facts (fact_id, session_id, doc_id, subject, attribute, value, value_type, unit, period, entity_id, evidence, char_start, char_end, status, validation_notes, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (fact_id, session_id, doc_id, f["subject"], f["attribute"], f["value"],
                      f.get("value_type", "string"), f.get("unit"), f.get("period"),
                      f.get("entity_id"), f.get("evidence", "")[:2000],
@@ -353,10 +395,11 @@ def list_relationships(session_id, path=None):
     conn = _connect(path)
     try:
         return [dict(r) for r in conn.execute(
-            "SELECT * FROM relationships WHERE session_id=? ORDER BY created_at DESC LIMIT 200", (session_id,)).fetchall()]
+            "SELECT * FROM relationships WHERE session_id=? ORDER BY created_at DESC, rel_id", (session_id,)).fetchall()]
     finally:
         conn.close()
-
+
+
 
 def get_stats(session_id, path=None):
     """Return combined summary counts for the Knowledge overview."""
@@ -412,7 +455,7 @@ def get_document_graph(session_id, path=None):
         # Entity -> set of doc_ids that mention it (via facts)
         ent_docs = {}
         facts = conn.execute(
-            "SELECT doc_id, entity_id FROM facts WHERE session_id=? AND entity_id IS NOT NULL",
+            "SELECT doc_id, entity_id FROM facts WHERE session_id=? AND status='validated' AND entity_id IN (SELECT entity_id FROM entities)",
             (session_id,)
         ).fetchall()
         for f in facts:
@@ -426,32 +469,29 @@ def get_document_graph(session_id, path=None):
                     key = tuple(sorted([ds[i], ds[j]]))
                     edge_map[key] = edge_map.get(key, 0) + 1
 
-        # Also bridge via relationships (entities connected to entities in other docs)
-        rels = conn.execute(
-            "SELECT src_entity_id, dst_entity_id FROM relationships WHERE session_id=?",
-            (session_id,)
-        ).fetchall()
-        for r in rels:
-            src_docs = ent_docs.get(r["src_entity_id"], set())
-            dst_docs = ent_docs.get(r["dst_entity_id"], set())
-            for da in src_docs:
-                for db in dst_docs:
-                    if da == db:
-                        continue
-                    key = tuple(sorted([da, db]))
-                    edge_map[key] = edge_map.get(key, 0) + 1
-
         edges = []
         for (da, db), count in edge_map.items():
             if da in doc_ids and db in doc_ids:
-                sim_score = min(0.98, max(0.25, round(count / (count + 2), 2)))
+                # Measured set overlap, not a fabricated similarity floor.
+                entities_a = {eid for eid, ids in ent_docs.items() if da in ids}
+                entities_b = {eid for eid, ids in ent_docs.items() if db in ids}
+                union = entities_a | entities_b
+                sim_score = len(entities_a & entities_b) / len(union) if union else 0.0
+                shared_entities = [
+                    {"entity_id": eid, "name": conn.execute(
+                        "SELECT canonical_name FROM entities WHERE entity_id=?", (eid,)
+                    ).fetchone()[0]}
+                    for eid in sorted(entities_a & entities_b)
+                ]
+                shared_entities.sort(key=lambda entity: (entity["name"].casefold(), entity["entity_id"]))
                 edges.append({
                     "source": da,
                     "target": db,
                     "weight": count,
                     "similarity": sim_score,
                     "rel_type": "shared_entities",
-                    "evidence": f"{count} shared entity/connection{'s' if count > 1 else ''}",
+                    "shared_entities": shared_entities,
+                    "evidence": "Shared entities: " + ", ".join(entity["name"] for entity in shared_entities),
                 })
 
         return {"documents": doc_list, "edges": edges}

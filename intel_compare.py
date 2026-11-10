@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field, validator
 
+import config
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -60,11 +62,16 @@ class ComparisonResult(BaseModel):
 
 def normalize_payload(payload: Dict[str, Any], source_doc_id: str = "") -> NormalizedClaim:
     """Normalize a raw claim dict into a NormalizedClaim."""
+    value_type = str(payload.get("value_type", "text") or "text").strip().lower()
+    # Extraction uses string/boolean/money; comparison uses text/number/date/entity.
+    # Preserve currency and magnitude suffixes by comparing money as text.
+    # The number parser does not understand currency conversion or M/B suffixes.
+    value_type = {"string": "text", "boolean": "text", "money": "text"}.get(value_type, value_type)
     return NormalizedClaim(
         subject=str(payload.get("subject", "") or "").strip(),
         attribute=str(payload.get("attribute", "") or "").strip(),
         value=str(payload.get("value", "") or "").strip(),
-        value_type=str(payload.get("value_type", "text") or "text").strip().lower(),
+        value_type=value_type,
         unit=str(payload.get("unit", "") or "").strip() or None,
         period=str(payload.get("period", "") or "").strip() or None,
         entity_id=str(payload.get("entity_id", "") or "").strip() or None,
@@ -293,8 +300,8 @@ def _llm_semantic_compare(
         except ImportError:
             return None
 
-        base_url = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-        model = os.getenv("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
+        base_url = config.NVIDIA_BASE_URL
+        model = config.NVIDIA_MODEL
 
         prompt = (
             "You are a careful claim-comparison assistant. Compare the two "

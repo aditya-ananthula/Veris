@@ -24,7 +24,8 @@ def _absorb(client, sid, filename, content, extraction_off=False):
     return client.post("/absorb", files=files, data=data)
 
 
-def test_e2e_upload_ask_scan_rescan():
+def test_e2e_upload_ask_scan_rescan(monkeypatch):
+    monkeypatch.setattr("config.EXTRACTION_ENABLED", True)
     """Full synthetic E2E: upload 2 docs, Q&A, contradiction scan, idempotent rescan."""
     sid = _sid()
 
@@ -92,7 +93,7 @@ def test_e2e_upload_ask_scan_rescan():
     ok = client.post("/ask", json={"question": "What was Acme Corp revenue?", "session_id": sid})
     assert ok.status_code == 200, ok.text
     body = ok.json()
-    assert set(body) == {"answer", "sources", "validation"}
+    assert set(body) == {"answer", "sources", "validation", "citations"}
     assert body["answer"]  # non-empty answer
 
     # 4. Ask an unsupported question (not in docs)

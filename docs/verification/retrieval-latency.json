@@ -1,0 +1,20 @@
+{
+  "document": "resume.pdf",
+  "stored_chunks": 9,
+  "question": "What projects and technical skills are listed in the resume?",
+  "warmup_ms": 156.2221999920439,
+  "runs_ms": [
+    158.0275000014808,
+    162.30319999158382,
+    156.540900003165,
+    167.02009999426082,
+    151.273499999661,
+    163.6640999931842,
+    158.13349999370985,
+    158.4891999955289,
+    155.7627999864053,
+    151.89950002240948
+  ],
+  "median_ms": 158.08049999759533,
+  "scope": "Warm hybrid retrieval plus context preparation up to first generation call; real Chroma default embeddings and real PDF. Generation replaced with stub and excluded. Single local process; not an improvement percentage."
+}

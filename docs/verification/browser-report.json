@@ -1,0 +1,931 @@
+{
+  "checks": [
+    {
+      "kind": "viewport",
+      "route": "/",
+      "width": 360,
+      "pass": true,
+      "measure": {
+        "width": 360,
+        "scrollWidth": 360,
+        "height": 900,
+        "scrollHeight": 1581,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/documents",
+      "width": 360,
+      "pass": true,
+      "measure": {
+        "width": 360,
+        "scrollWidth": 360,
+        "height": 900,
+        "scrollHeight": 1569,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge",
+      "width": 360,
+      "pass": true,
+      "measure": {
+        "width": 360,
+        "scrollWidth": 360,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/graph",
+      "width": 360,
+      "pass": true,
+      "measure": {
+        "width": 360,
+        "scrollWidth": 360,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": {
+          "left": 12,
+          "top": 322.6000061035156,
+          "right": 348,
+          "bottom": 863.8000183105469
+        },
+        "nodes": [
+          {
+            "left": 100,
+            "top": 382.5788879394531,
+            "right": 260,
+            "bottom": 498.48780059814453
+          },
+          {
+            "left": 100,
+            "top": 536.5750732421875,
+            "right": 260,
+            "bottom": 653.0250244140625
+          },
+          {
+            "left": 100,
+            "top": 690.5775756835938,
+            "right": 260,
+            "bottom": 807.5558471679688
+          }
+        ]
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/graph",
+      "width": 360,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/chunks",
+      "width": 360,
+      "pass": true,
+      "measure": {
+        "width": 360,
+        "scrollWidth": 360,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": {
+          "left": 12,
+          "top": 322.6000061035156,
+          "right": 348,
+          "bottom": 863.8000183105469
+        },
+        "nodes": []
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/chunks",
+      "width": 360,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/entities",
+      "width": 360,
+      "pass": true,
+      "measure": {
+        "width": 360,
+        "scrollWidth": 360,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": {
+          "left": 12,
+          "top": 322.6000061035156,
+          "right": 348,
+          "bottom": 851.0000305175781
+        },
+        "nodes": [
+          {
+            "left": 100,
+            "top": 385.3999938964844,
+            "right": 260,
+            "bottom": 491.3999938964844
+          },
+          {
+            "left": 100,
+            "top": 535.4000244140625,
+            "right": 260,
+            "bottom": 641.4000244140625
+          },
+          {
+            "left": 100,
+            "top": 685.4000244140625,
+            "right": 260,
+            "bottom": 791.4000244140625
+          }
+        ]
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/entities",
+      "width": 360,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/intelligence",
+      "width": 360,
+      "pass": true,
+      "measure": {
+        "width": 360,
+        "scrollWidth": 360,
+        "height": 900,
+        "scrollHeight": 1004,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/settings",
+      "width": 360,
+      "pass": true,
+      "measure": {
+        "width": 360,
+        "scrollWidth": 360,
+        "height": 900,
+        "scrollHeight": 1291,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/help",
+      "width": 360,
+      "pass": true,
+      "measure": {
+        "width": 360,
+        "scrollWidth": 360,
+        "height": 900,
+        "scrollHeight": 2083,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/",
+      "width": 768,
+      "pass": true,
+      "measure": {
+        "width": 768,
+        "scrollWidth": 768,
+        "height": 900,
+        "scrollHeight": 1057,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/documents",
+      "width": 768,
+      "pass": true,
+      "measure": {
+        "width": 768,
+        "scrollWidth": 768,
+        "height": 900,
+        "scrollHeight": 1135,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge",
+      "width": 768,
+      "pass": true,
+      "measure": {
+        "width": 768,
+        "scrollWidth": 768,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/graph",
+      "width": 768,
+      "pass": true,
+      "measure": {
+        "width": 768,
+        "scrollWidth": 768,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": {
+          "left": 248,
+          "top": 381.6000061035156,
+          "right": 744,
+          "bottom": 851.8000183105469
+        },
+        "nodes": [
+          {
+            "left": 292.3999938964844,
+            "top": 461.39556884765625,
+            "right": 452.3999938964844,
+            "bottom": 577.3044586181641
+          },
+          {
+            "left": 539.6000366210938,
+            "top": 461.12506103515625,
+            "right": 699.6000366210938,
+            "bottom": 577.5750122070312
+          },
+          {
+            "left": 292.3999938964844,
+            "top": 654.7608642578125,
+            "right": 452.3999938964844,
+            "bottom": 771.7391891479492
+          },
+          {
+            "left": 539.6000366210938,
+            "top": 654.5026245117188,
+            "right": 699.6000366210938,
+            "bottom": 771.9973526000977
+          }
+        ]
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/graph",
+      "width": 768,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/chunks",
+      "width": 768,
+      "pass": true,
+      "measure": {
+        "width": 768,
+        "scrollWidth": 768,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": {
+          "left": 248,
+          "top": 381.6000061035156,
+          "right": 744,
+          "bottom": 851.8000183105469
+        },
+        "nodes": []
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/chunks",
+      "width": 768,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/entities",
+      "width": 768,
+      "pass": true,
+      "measure": {
+        "width": 768,
+        "scrollWidth": 768,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": {
+          "left": 248,
+          "top": 381.6000061035156,
+          "right": 744,
+          "bottom": 819
+        },
+        "nodes": [
+          {
+            "left": 292.3999938964844,
+            "top": 458.1499938964844,
+            "right": 452.3999938964844,
+            "bottom": 564.1499938964844
+          },
+          {
+            "left": 539.6000366210938,
+            "top": 458.1499938964844,
+            "right": 699.6000366210938,
+            "bottom": 564.1499938964844
+          },
+          {
+            "left": 292.3999938964844,
+            "top": 635.6500244140625,
+            "right": 452.3999938964844,
+            "bottom": 741.6500244140625
+          },
+          {
+            "left": 539.6000366210938,
+            "top": 635.6500244140625,
+            "right": 699.6000366210938,
+            "bottom": 741.6500244140625
+          }
+        ]
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/entities",
+      "width": 768,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/intelligence",
+      "width": 768,
+      "pass": true,
+      "measure": {
+        "width": 768,
+        "scrollWidth": 768,
+        "height": 900,
+        "scrollHeight": 968,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/settings",
+      "width": 768,
+      "pass": true,
+      "measure": {
+        "width": 768,
+        "scrollWidth": 768,
+        "height": 900,
+        "scrollHeight": 1229,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/help",
+      "width": 768,
+      "pass": true,
+      "measure": {
+        "width": 768,
+        "scrollWidth": 768,
+        "height": 900,
+        "scrollHeight": 1790,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/",
+      "width": 1280,
+      "pass": true,
+      "measure": {
+        "width": 1280,
+        "scrollWidth": 1280,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/documents",
+      "width": 1280,
+      "pass": true,
+      "measure": {
+        "width": 1280,
+        "scrollWidth": 1280,
+        "height": 900,
+        "scrollHeight": 996,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge",
+      "width": 1280,
+      "pass": true,
+      "measure": {
+        "width": 1280,
+        "scrollWidth": 1280,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/graph",
+      "width": 1280,
+      "pass": true,
+      "measure": {
+        "width": 1280,
+        "scrollWidth": 1280,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": {
+          "left": 276,
+          "top": 369.6000061035156,
+          "right": 1256,
+          "bottom": 851.8000183105469
+        },
+        "nodes": [
+          {
+            "left": 686,
+            "top": 552.3455810546875,
+            "right": 846,
+            "bottom": 668.2545166015625
+          },
+          {
+            "left": 686,
+            "top": 435.175048828125,
+            "right": 846,
+            "bottom": 551.625
+          },
+          {
+            "left": 1070.2000732421875,
+            "top": 551.8109130859375,
+            "right": 1230.2000732421875,
+            "bottom": 668.7891845703125
+          },
+          {
+            "left": 686,
+            "top": 668.4526977539062,
+            "right": 846,
+            "bottom": 785.947380065918
+          },
+          {
+            "left": 301.8000183105469,
+            "top": 551.2999877929688,
+            "right": 461.8000183105469,
+            "bottom": 669.2999877929688
+          }
+        ]
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/graph",
+      "width": 1280,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/chunks",
+      "width": 1280,
+      "pass": true,
+      "measure": {
+        "width": 1280,
+        "scrollWidth": 1280,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": {
+          "left": 276,
+          "top": 369.6000061035156,
+          "right": 1256,
+          "bottom": 851.8000183105469
+        },
+        "nodes": []
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/chunks",
+      "width": 1280,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/entities",
+      "width": 1280,
+      "pass": true,
+      "measure": {
+        "width": 1280,
+        "scrollWidth": 1280,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": {
+          "left": 276,
+          "top": 369.6000061035156,
+          "right": 1256,
+          "bottom": 839
+        },
+        "nodes": [
+          {
+            "left": 686,
+            "top": 541.9000244140625,
+            "right": 846,
+            "bottom": 665.9000244140625
+          },
+          {
+            "left": 686,
+            "top": 440.3999938964844,
+            "right": 846,
+            "bottom": 546.3999938964844
+          },
+          {
+            "left": 1070.2000732421875,
+            "top": 550.9000244140625,
+            "right": 1230.2000732421875,
+            "bottom": 656.9000244140625
+          },
+          {
+            "left": 686,
+            "top": 661.4000244140625,
+            "right": 846,
+            "bottom": 767.4000244140625
+          },
+          {
+            "left": 301.8000183105469,
+            "top": 550.9000244140625,
+            "right": 461.8000183105469,
+            "bottom": 656.9000244140625
+          }
+        ]
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/entities",
+      "width": 1280,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/intelligence",
+      "width": 1280,
+      "pass": true,
+      "measure": {
+        "width": 1280,
+        "scrollWidth": 1280,
+        "height": 900,
+        "scrollHeight": 989,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/settings",
+      "width": 1280,
+      "pass": true,
+      "measure": {
+        "width": 1280,
+        "scrollWidth": 1280,
+        "height": 900,
+        "scrollHeight": 900,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/help",
+      "width": 1280,
+      "pass": true,
+      "measure": {
+        "width": 1280,
+        "scrollWidth": 1280,
+        "height": 900,
+        "scrollHeight": 1161,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/",
+      "width": 1920,
+      "pass": true,
+      "measure": {
+        "width": 1920,
+        "scrollWidth": 1920,
+        "height": 1080,
+        "scrollHeight": 1080,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/documents",
+      "width": 1920,
+      "pass": true,
+      "measure": {
+        "width": 1920,
+        "scrollWidth": 1920,
+        "height": 1080,
+        "scrollHeight": 1080,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge",
+      "width": 1920,
+      "pass": true,
+      "measure": {
+        "width": 1920,
+        "scrollWidth": 1920,
+        "height": 1080,
+        "scrollHeight": 1080,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/graph",
+      "width": 1920,
+      "pass": true,
+      "measure": {
+        "width": 1920,
+        "scrollWidth": 1920,
+        "height": 1080,
+        "scrollHeight": 1080,
+        "visual": {
+          "left": 276,
+          "top": 371.20001220703125,
+          "right": 1896,
+          "bottom": 1031.800048828125
+        },
+        "nodes": [
+          {
+            "left": 1006,
+            "top": 643.1455688476562,
+            "right": 1166,
+            "bottom": 759.0544586181641
+          },
+          {
+            "left": 1006,
+            "top": 436.7750549316406,
+            "right": 1166,
+            "bottom": 553.2250061035156
+          },
+          {
+            "left": 1710.2000732421875,
+            "top": 642.61083984375,
+            "right": 1870.2000732421875,
+            "bottom": 759.5891647338867
+          },
+          {
+            "left": 1006,
+            "top": 848.4527587890625,
+            "right": 1166,
+            "bottom": 965.9472885131836
+          },
+          {
+            "left": 301.8000183105469,
+            "top": 642.1000366210938,
+            "right": 461.8000183105469,
+            "bottom": 760.1000366210938
+          }
+        ]
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/graph",
+      "width": 1920,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/chunks",
+      "width": 1920,
+      "pass": true,
+      "measure": {
+        "width": 1920,
+        "scrollWidth": 1920,
+        "height": 1080,
+        "scrollHeight": 1080,
+        "visual": {
+          "left": 276,
+          "top": 371.20001220703125,
+          "right": 1896,
+          "bottom": 1031.800048828125
+        },
+        "nodes": []
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/chunks",
+      "width": 1920,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/knowledge/entities",
+      "width": 1920,
+      "pass": true,
+      "measure": {
+        "width": 1920,
+        "scrollWidth": 1920,
+        "height": 1080,
+        "scrollHeight": 1080,
+        "visual": {
+          "left": 276,
+          "top": 371.20001220703125,
+          "right": 1896,
+          "bottom": 1019
+        },
+        "nodes": [
+          {
+            "left": 1006,
+            "top": 632.7000122070312,
+            "right": 1166,
+            "bottom": 756.7000122070312
+          },
+          {
+            "left": 1006,
+            "top": 442,
+            "right": 1166,
+            "bottom": 548
+          },
+          {
+            "left": 1710.2000732421875,
+            "top": 641.7000122070312,
+            "right": 1870.2000732421875,
+            "bottom": 747.7000122070312
+          },
+          {
+            "left": 1006,
+            "top": 841.4000244140625,
+            "right": 1166,
+            "bottom": 947.4000244140625
+          },
+          {
+            "left": 301.8000183105469,
+            "top": 641.7000122070312,
+            "right": 461.8000183105469,
+            "bottom": 747.7000122070312
+          }
+        ]
+      }
+    },
+    {
+      "kind": "inspect",
+      "route": "/knowledge/entities",
+      "width": 1920,
+      "pass": true
+    },
+    {
+      "kind": "viewport",
+      "route": "/intelligence",
+      "width": 1920,
+      "pass": true,
+      "measure": {
+        "width": 1920,
+        "scrollWidth": 1920,
+        "height": 1080,
+        "scrollHeight": 1115,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/settings",
+      "width": 1920,
+      "pass": true,
+      "measure": {
+        "width": 1920,
+        "scrollWidth": 1920,
+        "height": 1080,
+        "scrollHeight": 1080,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "viewport",
+      "route": "/help",
+      "width": 1920,
+      "pass": true,
+      "measure": {
+        "width": 1920,
+        "scrollWidth": 1920,
+        "height": 1080,
+        "scrollHeight": 1080,
+        "visual": null,
+        "nodes": []
+      }
+    },
+    {
+      "kind": "large-data",
+      "route": "/knowledge/graph",
+      "count": 500,
+      "visible": 3,
+      "pass": true
+    },
+    {
+      "kind": "paging",
+      "route": "/knowledge/graph",
+      "pass": true
+    },
+    {
+      "kind": "empty",
+      "route": "/knowledge/graph",
+      "pass": true
+    },
+    {
+      "kind": "error",
+      "route": "/knowledge/graph",
+      "pass": true
+    },
+    {
+      "kind": "large-data",
+      "route": "/knowledge/chunks",
+      "count": 500,
+      "visible": 41,
+      "pass": true
+    },
+    {
+      "kind": "paging",
+      "route": "/knowledge/chunks",
+      "pass": true
+    },
+    {
+      "kind": "empty",
+      "route": "/knowledge/chunks",
+      "pass": true
+    },
+    {
+      "kind": "error",
+      "route": "/knowledge/chunks",
+      "pass": true
+    },
+    {
+      "kind": "large-data",
+      "route": "/knowledge/entities",
+      "count": 500,
+      "visible": 3,
+      "pass": true
+    },
+    {
+      "kind": "paging",
+      "route": "/knowledge/entities",
+      "pass": true
+    },
+    {
+      "kind": "empty",
+      "route": "/knowledge/entities",
+      "pass": true
+    },
+    {
+      "kind": "error",
+      "route": "/knowledge/entities",
+      "pass": true
+    },
+    {
+      "kind": "filter-no-match",
+      "pass": true
+    },
+    {
+      "kind": "shortcut",
+      "pass": true
+    },
+    {
+      "kind": "history",
+      "pass": true
+    }
+  ],
+  "errors": []
+}

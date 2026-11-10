@@ -155,7 +155,7 @@ def test_intel_api_endpoints(monkeypatch, tmp_path):
     assert docs.status_code == 200 and len(docs.json()) == 1
     assert docs.json()[0]["extraction_status"] == "skipped"
     assert set(docs.json()[0]) == {"doc_id", "filename", "extension", "version",
-                                   "status", "extraction_status", "extraction_error", "chunks"}
+                                   "status", "extraction_status", "extraction_error", "chunks", "created_at", "size_bytes", "source_available", "key_topics", "summary", "entity_count", "index_available", "recorded_chunks"}
     facts = c.get("/intel/facts", params={"session_id": sid})
     assert facts.status_code == 200 and facts.json() == []
     ents = c.get("/intel/entities", params={"session_id": sid})
@@ -224,7 +224,7 @@ def test_ask_grounded_answer_with_evidence(monkeypatch, tmp_path):
 
 def test_ask_abstains_without_relevant_evidence(monkeypatch, tmp_path):
     """With documents indexed but nothing matching the question, the API
-    abstains clearly instead of inventing an answer or calling the model."""
+    abstains with empty sources instead of using general knowledge."""
     path = _tmpdb(monkeypatch, tmp_path)
     monkeypatch.setattr("config.SQLITE_PATH", path)
     monkeypatch.setattr("config.EXTRACTION_ENABLED", False)
@@ -234,17 +234,22 @@ def test_ask_abstains_without_relevant_evidence(monkeypatch, tmp_path):
                    "John Doe has Python, TypeScript, and Rust skills.").status_code == 200
 
     called = {"n": 0}
-    def never(messages):
+    script = iter([
+        "Weather forecasts depend on your location and date; check a local meteorological service.",
+        "VERDICT: N/A\nUNSUPPORTED_CLAIMS: None\nREASONING: No document evidence was retrieved; answered from general knowledge.",
+    ])
+    def fake_chat(messages):
         called["n"] += 1
-        raise AssertionError("model must not be called when there is no evidence")
+        return next(script)
 
-    monkeypatch.setattr(rag_core, "_chat", never)
+    monkeypatch.setattr(rag_core, "_chat", fake_chat)
     r = c.post("/ask", json={"question": "what is the weather forecast", "session_id": sid})
     assert r.status_code == 200, r.text
     body = r.json()
     assert called["n"] == 0
     assert body["sources"] == []
-    assert body["answer"] and "don't have relevant information" in body["answer"].lower()
+    assert "provided documents" in body["answer"].lower()
+    assert body["validation"] == "VERDICT: INSUFFICIENT_EVIDENCE"
 
 
 def test_reupload_changed_content_supersedes_stale_facts(monkeypatch, tmp_path):

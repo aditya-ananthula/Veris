@@ -1,0 +1,15 @@
+{
+  "synthetic_source_only": true,
+  "provider": "NVIDIA",
+  "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+  "upload_status": 200,
+  "extraction_status": "complete",
+  "validated_facts": 2,
+  "answer_status": 200,
+  "correct_answer": true,
+  "citation_count": 3,
+  "citations_exact": true,
+  "validation": "VERDICT: SUPPORTED",
+  "passed": true,
+  "elapsed_seconds": 21.74
+}

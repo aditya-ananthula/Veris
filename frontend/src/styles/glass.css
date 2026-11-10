@@ -1,0 +1,122 @@
+/* Shared action material; knowledge explorers tune their own data controls. */
+:root {
+  --control-glass: linear-gradient(135deg, #67e8f92b, #a78bfa29 52%, #f472d71f), #10172d66;
+  --control-edge: #c9e8ff55;
+  --control-shadow: inset 0 1px 0 #ffffff38, inset 0 -1px 0 #07101c20, 0 4px 12px #05091630, 0 0 16px #a78bfa14;
+  --panel: linear-gradient(140deg, #5649aa4d, #16214940 55%, #24547d38);
+  --panel-border: #b7dfff44;
+  --glass-border: #b7dfff38;
+  --card-shadow: inset 0 1px 0 #edf4ff20, 0 12px 32px #05091624, 0 0 24px #8b5cf61a;
+}
+
+/* Navigation links and button-shaped anchors share the native button material.
+   The mobile dismiss scrim is an overlay, so it retains its own surface. */
+:root .app :is(button, .veris-btn-primary, .veris-btn-secondary, .veris-btn-danger, .veris-btn-ghost, .veris-nav-item, .knowledge-tabs a, .intelligence-nav a, .atlas-section-heading > a):not(.veris-nav-scrim):not(.knowledge button):not(.knowledge a) {
+  background: var(--control-glass);
+  border: 1px solid var(--control-edge);
+  border-radius: 12px;
+  color: #eaf1fc;
+  box-shadow: var(--control-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
+  text-shadow: none;
+  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+
+:root .app :is(button, .veris-btn-primary, .veris-btn-secondary, .veris-btn-danger, .veris-btn-ghost, .veris-nav-item, .knowledge-tabs a, .intelligence-nav a, .atlas-section-heading > a):not(.veris-nav-scrim):not(.knowledge button):not(.knowledge a):hover:not(:disabled) {
+  background: linear-gradient(135deg, #67e8f944, #a78bfa40 52%, #f472d733), #10172d70;
+  border-color: #d8f1ff88;
+  box-shadow: inset 0 1px 0 #ffffff55, inset 0 -1px 0 #07101c20, 0 5px 16px #05091638, 0 0 20px #a78bfa28;
+  color: #fff;
+}
+
+:root .app :is(.veris-btn-primary, button.active, button[aria-pressed=true], .veris-nav-item-active, .knowledge-tabs a.active, .intelligence-nav a.active):not(.veris-nav-scrim):not(.knowledge button):not(.knowledge a) {
+  background: linear-gradient(130deg, #4de1f947, #9e71ff52 56%, #f472d740), #11182d82;
+  border-color: #d8eaff9c;
+  box-shadow: inset 0 1px 0 #ffffff55, inset 0 -1px 0 #b8dfff14, 0 4px 14px #05091635, 0 0 20px #a78bfa30;
+  color: #fff;
+}
+
+:root .app .veris-sidebar .veris-nav-item {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 11px;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: #c9d5eb;
+}
+
+:root .app .veris-sidebar .veris-nav-item:hover:not(:disabled) {
+  background: linear-gradient(100deg, #67e8f912, #a78bfa16 65%, #f472d70a);
+  border-color: transparent;
+  box-shadow: none;
+  color: #fff;
+}
+
+:root .app .veris-sidebar .veris-nav-item-active {
+  background: linear-gradient(100deg, #67e8f91a, #a78bfa20 65%, #f472d70f);
+  border-color: transparent;
+  box-shadow: inset 2px 0 0 #67e8f985;
+  color: #fff;
+}
+
+:root .app .veris-btn-danger:not(.veris-nav-scrim):not(.knowledge button):not(.knowledge a) {
+  background: linear-gradient(145deg, #ffdae51c, #d6789510), #39233380;
+  border-color: #ffa8bf55;
+  color: #ffc9d8;
+}
+
+:root .app .veris-btn-danger:not(.veris-nav-scrim):not(.knowledge button):not(.knowledge a):hover:not(:disabled) {
+  background: linear-gradient(145deg, #ffdae52c, #d6789520), #492b3c99;
+  border-color: #ffc2d480;
+  color: #ffe2eb;
+}
+
+:root .app :is(button, .veris-btn-primary, .veris-btn-secondary, .veris-btn-danger, .veris-btn-ghost, .veris-nav-item, .knowledge-tabs a, .intelligence-nav a):not(.veris-nav-scrim):not(.knowledge button):not(.knowledge a):active:not(:disabled) {
+  box-shadow: inset 0 2px 5px #05091640, inset 0 1px 0 #ffffff18;
+}
+
+:root .app :is(button, a):focus-visible {
+  outline: 2px solid #a4ecf7;
+  outline-offset: 3px;
+}
+
+:root .app button:disabled {
+  opacity: .45;
+  box-shadow: inset 0 1px 0 #ffffff14;
+}
+
+.app .veris-sidebar {
+  padding: 28px 14px 22px;
+  background: linear-gradient(165deg, #5845a846, #111a354d 65%, #23466a42);
+  border-color: #b7dfff38;
+  box-shadow: inset -1px 0 0 #ffffff12, 4px 0 28px #5c43cf12;
+  -webkit-backdrop-filter: blur(30px) saturate(150%);
+  backdrop-filter: blur(30px) saturate(150%);
+}
+.app .veris-sidebar-brand { padding: 0 14px 34px; }
+.app .veris-sidebar-brand p { font-size: 29px; font-weight: 650; letter-spacing: -.04em; }
+.app .veris-sidebar-brand span { color: #b5c2d9; font-size: 11px; }
+.app .veris-sidebar-nav, .app .veris-sidebar-footer { gap: 8px; }
+.app .veris-sidebar-footer { margin-top: auto; padding-top: 20px; }
+.app .veris-nav-item { min-height: 46px; padding: 11px 14px; gap: 12px; font-size: 13px; font-weight: 500; }
+.app .veris-nav-item svg { width: 18px; height: 18px; color: #bac9de; }
+.app .veris-nav-item-active svg { color: #acedf4; }
+.app .capability > svg:first-child { color: #bfc8f5; filter: none; }
+.app .capability { border-color: var(--glass-border); background: #bacbff08; }
+.app .knowledge .connection-list { gap: 8px; }
+.app .knowledge .connection-list button { padding: 14px; }
+.app .document-name { padding: 6px 10px; }
+.app .entity-neighbors li { gap: 6px; }
+
+@media (max-width: 800px) {
+  .app .veris-mobile-nav-toggle[aria-expanded=true] { left: 180px; top: 24px; }
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  :root { --control-glass: linear-gradient(135deg, #31566b, #40366d 52%, #5d355e); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root .app :is(button, a) { transition: none; }
+}

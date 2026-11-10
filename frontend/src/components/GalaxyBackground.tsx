@@ -31,13 +31,13 @@ void main(){
  c*=m*1.55;
  c*=1.-.55*smoothstep(.55,.8,fbm(p*1.4+9.));
  vec2 g=fc/(R.y/90.);float st=h(floor(g));vec2 fr=fract(g)-.5;
- c+=vec3(.9,.9,1.)*smoothstep(.16,0.,length(fr))*step(.965,st)*(.6+.4*sin(T*1.5+st*80.));
+ c+=vec3(.9,.9,1.)*(1.-smoothstep(0.,.16,length(fr)))*step(.965,st)*(.6+.4*sin(T*1.5+st*80.));
  vec2 o=O.xy;float rad=O.z;vec2 e=(fc-o)/rad;float d=length(e);
   vec2 drift=e+vec2(sin(T*.10)*.06,cos(T*.08)*.05);
   float wisps=fbm(drift*3.5+T*.025);
   float cloud=exp(-dot(drift*vec2(.88,1.08),drift*vec2(.88,1.08))*2.1);
   float grain=pow(fbm(drift*12.-T*.035),3.2);
-  float dissolve=smoothstep(1.34,.36,d+wisps*.35);
+  float dissolve=1.-smoothstep(.36,1.34,d+wisps*.35);
   vec3 vapor=mix(vec3(.15,.58,1.),vec3(.86,.40,1.),wisps);
   c+=vapor*cloud*(.20+.47*grain)*dissolve;
   c+=vec3(.58,.9,1.)*pow(max(0.,1.-length(drift-vec2(-.18,-.22))*1.7),5.)*.70;
@@ -72,8 +72,10 @@ void main(){
     };
 
     const program = gl.createProgram();
-    gl.attachShader(program, shader(gl.VERTEX_SHADER, vs));
-    gl.attachShader(program, shader(gl.FRAGMENT_SHADER, fs));
+    const vertexShader = shader(gl.VERTEX_SHADER, vs);
+    gl.attachShader(program, vertexShader);
+    const fragmentShader = shader(gl.FRAGMENT_SHADER, fs);
+    gl.attachShader(program, fragmentShader);
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
       console.error('WebGL link error', gl.getProgramInfoLog(program));
@@ -126,7 +128,8 @@ void main(){
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
 
-    let raf: number;
+    let raf = 0;
+    const drawStill = () => draw(0);
     const loop = (ms: number) => {
       draw(ms);
       raf = requestAnimationFrame(loop);
@@ -137,19 +140,19 @@ void main(){
 
     if (calm) {
       draw(0);
-      window.addEventListener('scroll', () => draw(0));
+      window.addEventListener('scroll', drawStill);
     } else {
       raf = requestAnimationFrame(loop);
     }
 
     return () => {
       window.removeEventListener('resize', resize);
-      window.removeEventListener('scroll', () => draw(0));
+      window.removeEventListener('scroll', drawStill);
       cancelAnimationFrame(raf);
       gl.deleteProgram(program);
       gl.deleteBuffer(buf);
-      gl.deleteShader(shader(gl.VERTEX_SHADER, vs));
-      gl.deleteShader(shader(gl.FRAGMENT_SHADER, fs));
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
     };
   }, [calm, orbAnchorId, fs, vs]);
 
@@ -171,4 +174,3 @@ void main(){
     />
   );
 }
-

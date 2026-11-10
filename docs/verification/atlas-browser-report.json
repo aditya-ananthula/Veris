@@ -1,0 +1,16 @@
+{
+  "checks": [
+    "/knowledge renders at 1440",
+    "/knowledge/graph renders at 1440",
+    "/knowledge/chunks renders at 1440",
+    "/knowledge/entities renders at 1440",
+    "/knowledge renders at 390",
+    "/knowledge/graph renders at 390",
+    "/knowledge/chunks renders at 390",
+    "/knowledge/entities renders at 390",
+    "Keyboard edge evidence, Escape, threshold, zoom, entity deep link",
+    "empty state",
+    "error state"
+  ],
+  "errors": []
+}

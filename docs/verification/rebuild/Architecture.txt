@@ -1,0 +1,1 @@
+Acme uses Python to process 5 projects. Semantic retrieval uses embeddings to find similar passages.

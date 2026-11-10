@@ -1,0 +1,178 @@
+{
+  "checks": [
+    {
+      "name": "Batch upload, persistence and list",
+      "pass": true
+    },
+    {
+      "name": "Extraction and original-file metadata",
+      "pass": true
+    },
+    {
+      "name": "Original source opens",
+      "pass": true
+    },
+    {
+      "name": "Grounded answer with named chunk citations",
+      "pass": true
+    },
+    {
+      "name": "Shift+Enter preserves multiline input",
+      "pass": true
+    },
+    {
+      "name": "Follow-up retains both turns",
+      "pass": true
+    },
+    {
+      "name": "Citation selects its exact chunk",
+      "pass": true
+    },
+    {
+      "name": "Desktop /",
+      "pass": true
+    },
+    {
+      "name": "Desktop /documents",
+      "pass": true
+    },
+    {
+      "name": "Desktop /knowledge",
+      "pass": true
+    },
+    {
+      "name": "Desktop /knowledge/graph",
+      "pass": true
+    },
+    {
+      "name": "Desktop /knowledge/chunks",
+      "pass": true
+    },
+    {
+      "name": "Desktop /knowledge/entities",
+      "pass": true
+    },
+    {
+      "name": "Desktop /intelligence",
+      "pass": true
+    },
+    {
+      "name": "Desktop /intelligence?tab=compare",
+      "pass": true
+    },
+    {
+      "name": "Desktop /intelligence?tab=contradictions",
+      "pass": true
+    },
+    {
+      "name": "Desktop /insights",
+      "pass": true
+    },
+    {
+      "name": "Desktop /settings",
+      "pass": true
+    },
+    {
+      "name": "Desktop /help",
+      "pass": true
+    },
+    {
+      "name": "Comparison has conflicts and evidence",
+      "pass": true
+    },
+    {
+      "name": "Contradiction scan has both excerpts",
+      "pass": true
+    },
+    {
+      "name": "Document node opens actual inspector",
+      "pass": true
+    },
+    {
+      "name": "Entity evidence inspector",
+      "pass": true
+    },
+    {
+      "name": "390 /",
+      "pass": true
+    },
+    {
+      "name": "390 /documents",
+      "pass": true
+    },
+    {
+      "name": "390 /knowledge/graph",
+      "pass": true
+    },
+    {
+      "name": "390 /knowledge/chunks",
+      "pass": true
+    },
+    {
+      "name": "390 /knowledge/entities",
+      "pass": true
+    },
+    {
+      "name": "390 /intelligence",
+      "pass": true
+    },
+    {
+      "name": "390 /insights",
+      "pass": true
+    },
+    {
+      "name": "768 /",
+      "pass": true
+    },
+    {
+      "name": "768 /documents",
+      "pass": true
+    },
+    {
+      "name": "768 /knowledge/graph",
+      "pass": true
+    },
+    {
+      "name": "768 /knowledge/chunks",
+      "pass": true
+    },
+    {
+      "name": "768 /knowledge/entities",
+      "pass": true
+    },
+    {
+      "name": "768 /intelligence",
+      "pass": true
+    },
+    {
+      "name": "768 /insights",
+      "pass": true
+    },
+    {
+      "name": "Confirmed bulk deletion removes every derived record",
+      "pass": true,
+      "detail": [
+        {
+          "documents": 0,
+          "chunks": 0,
+          "entities": 0,
+          "facts": 0,
+          "relationships": 0,
+          "topics": 0,
+          "storage_bytes": 0,
+          "sources_with_size": 0
+        },
+        {
+          "chunks": [],
+          "total": 0
+        },
+        [],
+        {
+          "conflicts": []
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "provider": "Test-only deterministic LLM; real FastAPI, persistent Chroma embeddings, SQLite and original files."
+}

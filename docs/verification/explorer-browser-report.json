@@ -1,0 +1,16 @@
+{
+  "checks": [
+    "All records plotted with ten markers; missing projections excluded only in embedding mode; keyboard selection; adjacent-source reading; locate; pan and fit",
+    "Keyboard relationship selection; all supporting records retained; entity neighborhood focus and return",
+    "Bounded pagination and passage deep links",
+    "/knowledge/chunks fits 390",
+    "/knowledge/entities fits 390",
+    "/knowledge/chunks fits 768",
+    "/knowledge/entities fits 768",
+    "/knowledge/chunks empty",
+    "/knowledge/entities empty",
+    "/knowledge/chunks error",
+    "/knowledge/entities error"
+  ],
+  "errors": []
+}

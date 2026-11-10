@@ -34,12 +34,15 @@ app.add_middleware(
 class Question(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     session_id: str
+    history: list[dict[str, str]] = Field(default_factory=list, max_length=10)
+    doc_id: str | None = None
 
 
 class AskResponse(BaseModel):
     answer: str
     sources: list[str]
     validation: str
+    citations: list[dict] = []
 
 
 class DocumentsResponse(BaseModel):
@@ -158,7 +161,7 @@ def capabilities():
         "llm_model": config.NVIDIA_MODEL,
         "nvidia_configured": config.has_nvidia_key(),
         "session_ttl_seconds": config.SESSION_TTL_SECONDS,
-        "persistence": "ephemeral-in-memory",
+        "persistence": "persistent-on-disk" if config.CHROMA_PERSIST_DIR else "ephemeral-in-memory",
         "features": [
             "upload",
             "list-documents",
@@ -174,7 +177,10 @@ def ask(payload: Question):
     if not payload.question.strip():
         raise HTTPException(status_code=400, detail="Question must not be empty")
     try:
-        return rag_core.ask_question(payload.question, _profile_id(payload.session_id))
+        history = [{"role": m["role"], "content": m.get("content", "")[:8000]} for m in payload.history if m.get("role") in {"user", "assistant"}]
+        return rag_core.ask_question(payload.question, _profile_id(payload.session_id), history, payload.doc_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except RuntimeError as e:
         # Missing NVIDIA key / provider misconfiguration -> 502, no secret leakage.
         raise HTTPException(status_code=502, detail=str(e))
@@ -213,6 +219,14 @@ class IntelDocument(BaseModel):
     extraction_status: str
     extraction_error: str | None = None
     chunks: int
+    index_available: bool = True
+    recorded_chunks: int = 0
+    created_at: float | None = None
+    size_bytes: int | None = None
+    source_available: bool = False
+    key_topics: list[str] = []
+    summary: str | None = None
+    entity_count: int = 0
 
 
 class IntelFact(BaseModel):
@@ -307,6 +321,11 @@ def intel_contradictions_refresh(session_id: str):
 def intel_contradictions_update(conflict_id: str, session_id: str,
                                 payload: dict):
     contr = _phase4()
+    existing = contr.get_contradiction(conflict_id)
+    if not existing or existing['session_id'] != _profile_id(session_id):
+        raise HTTPException(status_code=404, detail="Contradiction not found")
+    if payload.get('status') not in {'open', 'resolved', 'dismissed'}:
+        raise HTTPException(status_code=400, detail="Invalid status")
     result = contr.update_contradiction(conflict_id, payload)
     if not result:
         raise HTTPException(status_code=404, detail="Contradiction not found")
@@ -318,7 +337,7 @@ def intel_contradictions_update(conflict_id: str, session_id: str,
 def intel_contradictions_detail(conflict_id: str, session_id: str):
     contr = _phase4()
     detail = contr.get_contradiction(conflict_id)
-    if not detail:
+    if not detail or detail['session_id'] != _profile_id(session_id):
         raise HTTPException(status_code=404, detail="Contradiction not found")
     return detail
 
@@ -346,13 +365,17 @@ def intel_compare_endpoint(payload: dict):
 
 @app.get("/intel/documents", response_model=list[IntelDocument])
 def intel_documents(session_id: str):
-    store = _intel()
-    return [
-        {k: d.get(k) for k in
-         ("doc_id", "filename", "extension", "version", "status",
-          "extraction_status", "extraction_error", "chunks")}
-        for d in store.list_documents(_profile_id(session_id))
-    ]
+    profile_id = _profile_id(session_id)
+    live = {d['filename']: d['chunks'] for d in rag_core.get_documents_meta(profile_id)}
+    result = []
+    for d in _intel().list_documents(profile_id):
+        if d.get('status') == 'superseded':
+            continue
+        d['recorded_chunks'] = d['chunks']
+        d['chunks'] = live.get(d['filename'], 0)
+        d['index_available'] = d['chunks'] > 0
+        result.append(d)
+    return result
 
 
 @app.get("/intel/facts", response_model=list[IntelFact])
@@ -414,7 +437,13 @@ def absorb(file: UploadFile, session_id: str = Form(...)):
     file_bytes = file.file.read(MAX_UPLOAD_BYTES + 1)
     if len(file_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Documents must be 10 MB or smaller")
-    num_chunks = rag_core.ingest_document_bytes(file_bytes, profile_id, doc_id_prefix=filename)
+    try:
+        num_chunks = rag_core.ingest_document_bytes(file_bytes, profile_id, doc_id_prefix=filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception:
+        logger.exception("Upload processing failed")
+        raise HTTPException(status_code=422, detail="Document could not be processed. Verify the file is readable and retry.")
     return {"filename": filename, "chunks_added": num_chunks}
 
 
@@ -425,6 +454,9 @@ class ChunkMeta(BaseModel):
     docFilename: str
     chunkIndex: int
     embedding: list[float] | None
+    page: int | None = None
+    projection: list[float] | None = None
+    kind: str = 'passage'
 
 
 class ChunkCloudResponse(BaseModel):
@@ -433,7 +465,7 @@ class ChunkCloudResponse(BaseModel):
 
 
 @app.get("/intel/chunks", response_model=ChunkCloudResponse)
-def intel_chunks(session_id: str, doc_id: str | None = None):
+def intel_chunks(session_id: str, doc_id: str | None = None, include_embeddings: bool = True):
     """Return all chunks with embeddings for a session, used by the Chunk Cloud."""
     profile_id = _profile_id(session_id)
     # Chroma stores the filename as `source`; the intelligence store uses a
@@ -448,7 +480,7 @@ def intel_chunks(session_id: str, doc_id: str | None = None):
     count = collection.count()
     if count == 0:
         return {"chunks": [], "total": 0}
-    stored = collection.get(include=["embeddings", "documents", "metadatas"])
+    stored = collection.get(include=["documents", "metadatas"] + (["embeddings"] if include_embeddings else []))
     chunks = []
     raw_emb = stored.get("embeddings")
     embeddings = raw_emb.tolist() if hasattr(raw_emb, "tolist") else (list(raw_emb) if raw_emb else [])
@@ -474,10 +506,56 @@ def intel_chunks(session_id: str, doc_id: str | None = None):
             "text": text or "",
             "docId": resolved_doc_id,
             "docFilename": source_name,
-            "chunkIndex": chunk_index,
+            "chunkIndex": meta.get('chunk_index', chunk_index),
+            "page": meta.get('page'),
+            "kind": meta.get('kind', 'passage'),
             "embedding": emb,
         })
     return {"chunks": chunks, "total": len(chunks)}
+
+
+@app.get('/intel/chunk-projection')
+def chunk_projection(session_id: str):
+    """Deterministic PCA over stored embeddings; no random display coordinates."""
+    import numpy as np
+    result = intel_chunks(session_id, include_embeddings=True)
+    rows = result['chunks']
+    valid = [r for r in rows if r['embedding'] and np.isfinite(r['embedding']).all()]
+    if valid:
+        matrix = np.asarray([r['embedding'] for r in valid], dtype=np.float64)
+        matrix -= matrix.mean(axis=0)
+        # Power iteration avoids a full SVD and its quadratic memory footprint.
+        axes = []
+        for axis in range(2):
+            vector = np.cos(np.arange(matrix.shape[1]) + axis)
+            for _ in range(32):
+                vector = matrix.T @ (matrix @ vector)
+                for previous in axes:
+                    vector -= previous * np.dot(previous, vector)
+                norm = np.linalg.norm(vector)
+                if norm < 1e-12:
+                    vector = np.zeros_like(vector)
+                    break
+                vector /= norm
+            axes.append(vector)
+        xy = matrix @ np.asarray(axes).T
+        scale = max(float(np.abs(xy).max()), 1e-12)
+        for row, point in zip(valid, xy):
+            row['projection'] = (point / scale).tolist()
+    for row in rows:
+        row['embedding'] = None
+    return result
+
+
+@app.get('/intel/source/{doc_id}')
+def document_source(doc_id: str, session_id: str):
+    from fastapi.responses import Response
+    from urllib.parse import quote
+    source = _intel().get_source(_profile_id(session_id), doc_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Original file is unavailable for this legacy document. Stored passages remain accessible.")
+    media = {'.pdf': 'application/pdf', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8'}
+    return Response(source['content'], media_type=media.get(os.path.splitext(source['filename'])[1].lower(), 'application/octet-stream'), headers={'Content-Disposition': "inline; filename*=UTF-8''" + quote(source['filename']), 'X-Content-Type-Options': 'nosniff'})
 
 # ---- Knowledge graph: stats, document graph, entity detail ----
 
@@ -487,6 +565,9 @@ class IntelStatsResponse(BaseModel):
     entities: int
     facts: int
     relationships: int
+    topics: int = 0
+    storage_bytes: int = 0
+    sources_with_size: int = 0
 
 
 class DocumentGraphEdge(BaseModel):
@@ -544,13 +625,21 @@ class IntelEntityDetailResponse(BaseModel):
 @app.get("/intel/stats", response_model=IntelStatsResponse)
 def intel_stats(session_id: str):
     store = _intel()
-    return store.get_stats(_profile_id(session_id))
+    profile_id = _profile_id(session_id)
+    result = store.get_stats(profile_id)
+    documents = intel_documents(session_id)
+    result['chunks'] = sum(d['chunks'] for d in documents)
+    result.update(topics=len({t for d in documents for t in d['key_topics']}),
+                  storage_bytes=sum(d.get('size_bytes') or 0 for d in documents),
+                  sources_with_size=sum(d.get('size_bytes') is not None for d in documents))
+    return result
 
 
 @app.get("/intel/document-graph", response_model=IntelDocumentGraphResponse)
 def intel_document_graph(session_id: str):
     store = _intel()
     result = store.get_document_graph(_profile_id(session_id))
+    result['documents'] = intel_documents(session_id)
     return result
 
 
@@ -583,6 +672,13 @@ class CompareDocsResponse(BaseModel):
 def intel_compare_documents(payload: CompareDocsRequest):
     store = _intel()
     profile_id = _profile_id(payload.session_id)
+    documents = store.list_documents(profile_id)
+    doc_a = next((d for d in documents if payload.doc_a in (d['doc_id'], d['filename']) and d['status'] != 'superseded'), None)
+    doc_b = next((d for d in documents if payload.doc_b in (d['doc_id'], d['filename']) and d['status'] != 'superseded'), None)
+    if not doc_a or not doc_b:
+        raise HTTPException(status_code=404, detail="Select documents from this collection")
+    if doc_a['doc_id'] == doc_b['doc_id']:
+        raise HTTPException(status_code=400, detail="Select two different documents")
     facts_a = store.search_facts(profile_id, doc_id=payload.doc_a, limit=100)
     facts_b = store.search_facts(profile_id, doc_id=payload.doc_b, limit=100)
     # Also attempt match by filename if doc_id was passed as filename
@@ -593,6 +689,8 @@ def intel_compare_documents(payload: CompareDocsRequest):
         all_facts = store.search_facts(profile_id, limit=200)
         facts_b = [f for f in all_facts if f.get("filename") == payload.doc_b]
 
+    facts_a = [f for f in facts_a if f['status'] == 'validated']
+    facts_b = [f for f in facts_b if f['status'] == 'validated']
     matches = []
     conflicts = []
     used_b = set()
@@ -623,10 +721,10 @@ def intel_compare_documents(payload: CompareDocsRequest):
     unique_a = [f for f in facts_a if not any(m["claim_a"]["fact_id"] == f["fact_id"] for m in matches + conflicts)]
     unique_b = [f for f in facts_b if f["fact_id"] not in used_b]
 
-    summary = f"Compared {len(facts_a)} claims from {payload.doc_a} and {len(facts_b)} claims from {payload.doc_b}. Found {len(matches)} agreements and {len(conflicts)} conflicting statements."
+    summary = f"Compared {len(facts_a)} validated claims from {doc_a['filename']} and {len(facts_b)} from {doc_b['filename']}. Found {len(matches)} agreements and {len(conflicts)} conflicting statements. Unpaired claims do not imply disagreement. Analysis is limited to extracted evidence."
     return {
-        "doc_a": payload.doc_a,
-        "doc_b": payload.doc_b,
+        "doc_a": doc_a['filename'],
+        "doc_b": doc_b['filename'],
         "matches": matches,
         "conflicts": conflicts,
         "unique_a": unique_a,

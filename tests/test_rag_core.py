@@ -60,9 +60,43 @@ def test_is_supported_parser():
     assert not rag_core._is_supported("no verdict here")
 
 
-def test_ask_no_documents():
-    res = rag_core.ask_question("anything?", _sid())
-    assert res["sources"] == [] and "No documents" in res["answer"]
+def test_ask_no_documents_general_answer(monkeypatch):
+    monkeypatch.setattr(
+        rag_core, "_chat",
+        lambda messages: "The speed of light is about 299,792,458 meters per second.",
+    )
+    res = rag_core.ask_question("What is the speed of light?", _sid())
+    assert res["sources"] == []
+    assert res["answer"] and "No documents" not in res["answer"]
+    assert res["validation"] == "VERDICT: INSUFFICIENT_EVIDENCE"
+
+
+def test_ask_no_relevant_chunks_general_answer(monkeypatch):
+    sid = _sid()
+    rag_core.ingest_document_bytes(
+        b"alpha beta gamma delta epsilon " * 20,
+        sid, "memo.txt",
+    )
+    import chromadb
+
+    real_query = chromadb.api.models.Collection.Collection.query
+
+    def far_query(self, **kwargs):
+        out = real_query(self, **kwargs)
+        out["distances"] = [[99.0] * len(out["distances"][0])]
+        return out
+
+    monkeypatch.setattr(
+        "chromadb.api.models.Collection.Collection.query", far_query
+    )
+    monkeypatch.setattr(
+        rag_core, "_chat",
+        lambda messages: "The speed of light is about 299,792,458 meters per second.",
+    )
+    res = rag_core.ask_question("What is the speed of light?", sid)
+    assert res["sources"] == []
+    assert "provided documents" in res["answer"].lower()
+    assert res["validation"] == "VERDICT: INSUFFICIENT_EVIDENCE"
 
 
 def test_ask_keyword_fallback_offline(monkeypatch):
@@ -177,7 +211,7 @@ def test_api_phase2_endpoints(monkeypatch):
     assert empty.status_code == 400  # whitespace-only rejected by handler guard
     ok = c.post("/ask", json={"question": "what words?", "session_id": sid})
     assert ok.status_code == 200 and "answer" in ok.json()
-    assert set(ok.json()) == {"answer", "sources", "validation"}
+    assert set(ok.json()) == {"answer", "sources", "validation", "citations"}
     gone = c.delete(f"/documents/{'nope.txt'}", params={"session_id": sid})
     assert gone.status_code == 404
     deleted = c.delete("/documents/m.txt", params={"session_id": sid})

@@ -1,0 +1,51 @@
+import puppeteer from 'puppeteer';
+import fs from 'node:fs';
+import path from 'node:path';
+const out=path.resolve('../docs/verification'),base='http://127.0.0.1:5176';
+const result={checks:[],errors:[],provider:'Deterministic test LLM; real FastAPI, Chroma embeddings and SQLite.'};
+for(const [name,value] of [['source-a.txt','$5M'],['source-b.txt','$8M'],['attachment.txt','$5M']])fs.writeFileSync(path.join(out,name),'Acme Corp revenue was '+value+' in Q1 2026.');
+const browser=await puppeteer.launch({headless:true,args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'],timeout:60000});
+try{
+ const page=await browser.newPage();await page.setViewport({width:1280,height:900});await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}]);
+ page.on('pageerror',e=>result.errors.push(e.message));
+ await page.goto(base+'/documents',{waitUntil:'networkidle0'});
+ const input=await page.$('input[type=file]');await input.uploadFile(path.join(out,'source-a.txt'),path.join(out,'source-b.txt'));
+ await page.waitForFunction(()=>document.querySelectorAll('.document-row').length===2,{timeout:120000});
+ result.checks.push({name:'Batch upload and indexing',pass:true});
+ const docs=await page.evaluate(async()=>await(await fetch('/intel/documents?session_id='+localStorage.getItem('veris.session_id'))).json());
+ result.checks.push({name:'Structured extraction',pass:docs.every(d=>d.extraction_status==='complete'&&d.chunks>0)});
+ await page.goto(base+'/intelligence',{waitUntil:'networkidle0'});
+ await(await page.$('input[type=file]')).uploadFile(path.join(out,'attachment.txt'));
+ await page.type('textarea','What was Acme Corp revenue in Q1 2026?');
+ await page.click('[aria-label="Send question"]');
+ await page.waitForSelector('.message-assistant details',{timeout:120000});
+ await page.$$eval('.message-assistant summary',els=>els.find(e=>e.textContent.includes('Cited evidence')).click());
+ result.checks.push({name:'Answer evidence opens',pass:await page.$('.message-assistant details[open] blockquote')!==null});
+ const attached=await page.evaluate(async()=>await(await fetch('/intel/documents?session_id='+localStorage.getItem('veris.session_id'))).json());
+ result.checks.push({name:'Attachment bytes uploaded before answer',pass:attached.some(d=>d.filename==='attachment.txt'&&d.chunks>0)});
+ await page.screenshot({path:path.join(out,'screenshots/e2e-answer-evidence.png'),fullPage:true});
+ await page.goto(base+'/intelligence?tab=compare',{waitUntil:'networkidle0'});
+ const selects=await page.$$('.filters select');await selects[0].select(docs.find(d=>d.filename==='source-a.txt').doc_id);await selects[1].select(docs.find(d=>d.filename==='source-b.txt').doc_id);
+ await page.click('.filters .veris-btn-primary');
+ await page.waitForFunction(()=>document.body.textContent.includes('Comparison results'),{timeout:120000});
+ result.checks.push({name:'Comparison with claim evidence',pass:await page.$('.comparison-grid blockquote')!==null});
+ await page.goto(base+'/intelligence?tab=contradictions',{waitUntil:'networkidle0'});
+ await page.click('.veris-btn-primary');
+ await page.waitForSelector('[role=status]',{timeout:120000});
+ result.checks.push({name:'Contradiction scan with both source excerpts',pass:await page.$('.comparison-grid blockquote')!==null});
+ await page.goto(base+'/knowledge/graph',{waitUntil:'networkidle0'});
+ await page.waitForSelector('.knowledge-node');
+ await page.click('.knowledge-node');await page.waitForSelector('.knowledge-inspector');
+ result.checks.push({name:'Graph inspector backed by uploaded documents',pass:await page.$eval('.knowledge-inspector',e=>e.textContent.includes('stored chunks'))});
+ await page.goto(base+'/knowledge/chunks?document='+docs[0].doc_id,{waitUntil:'networkidle0'});
+ await page.waitForSelector('.cloud-particle');await page.click('.cloud-particle');
+ result.checks.push({name:'Chunk source filter and inspection',pass:await page.$eval('.knowledge-inspector',(e,name)=>e.textContent.includes(name),docs[0].filename).catch(()=>false)});
+ await page.goto(base+'/knowledge/entities',{waitUntil:'networkidle0'});await page.waitForSelector('.knowledge-node');await page.click('.knowledge-node');await page.waitForFunction(()=>document.querySelector('.knowledge-inspector')?.textContent.includes('Properties'));
+ result.checks.push({name:'Entity source evidence',pass:await page.$('.knowledge-inspector blockquote')!==null});
+ await page.goto(base+'/documents',{waitUntil:'networkidle0'});page.on('dialog',d=>d.accept());
+ for(let i=0;i<3;i++){await page.click('button[aria-label^="Delete "]');await page.waitForFunction(n=>document.querySelectorAll('.document-row').length===n,{timeout:30000},2-i);}
+ result.checks.push({name:'Deletion and empty library',pass:await page.$('.empty-state')!==null});
+}catch(e){result.errors.push(e.stack);}
+finally{await browser.close();fs.writeFileSync(path.join(out,'e2e-report.json'),JSON.stringify(result,null,2));}
+console.log(JSON.stringify(result,null,2));
+if(result.errors.length||result.checks.some(c=>!c.pass))process.exitCode=1;

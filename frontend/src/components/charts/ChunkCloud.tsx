@@ -1,486 +1,161 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Cloud, Loader2 } from 'lucide-react';
-import { api } from '../../services/api';
-import type { ChunkPoint } from '../../types';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, Crosshair, ExternalLink, Orbit, Search, X } from 'lucide-react';
+import { useKnowledgeData } from '../../hooks/useKnowledgeData';
+import { colorFor, type StoredChunk } from './knowledgeLayout';
+import { CLOUD_PAGE_SIZE, cloudPoints, hasProjection, sourceNeighbors, type CloudMode } from './cloudLayout';
+import { KnowledgeStatus } from '../../pages/KnowledgeLayout';
+import { sourceUrl } from '../../services/api';
+import { Inspector } from '../Inspector';
 
-interface ChunkCloudProps {
-  sessionId: string;
-  documents: Array<{ doc_id: string; filename: string; chunks: number }>;
-  height?: number;
-  className?: string;
-}
+const EMPTY_CHUNKS: StoredChunk[] = [];
 
-/** Exactly 10 deterministic visual sub-points per real stored chunk.
- *  These are markers linked to their parent chunk -- never separate chunks
- *  or fabricated data. */
-export const SUB_POINTS_PER_CHUNK = 10;
-
-const DOC_PALETTE = [
-  '#22d3ee', '#a855f7', '#f472b6', '#34d399', '#f59e0b',
-  '#60a5fa', '#f87171', '#4ade80', '#e879f9', '#fbbf24',
-];
-
-function colorForIndex(i: number) {
-  return DOC_PALETTE[i % DOC_PALETTE.length];
-}
-
-/** FNV-1a 32-bit hash of a string, deterministic across runs and environments. */
-function strHash32(s: string): number {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h >>> 0;
-}
-
-/** Cluster radius (in projection units) as a fraction of the overall data span,
- *  used to place sub-points around their parent chunk. Small enough that
- *  clusters stay distinct, large enough to be clearly visible after canvas fit. */
-const SUB_CLUSTER_RADIUS_FRAC = 0.02;
-
-/** Project high-dim embeddings to 2D via a correct deterministic PCA variant
- *  (power iteration + deflation). Both PCs are computed on centered data with
- *  pc2 computed on pc1-deflated rows, so the two axes stay orthogonal and
- *  spread the points across the full 2D plane instead of collapsing into a
- *  diagonal line. */
-function projectTo2D(embeddings: number[][]): Array<{ x: number; y: number }> {
-  const n = embeddings.length;
-  if (n === 0) return [];
-  const dim = embeddings[0].length;
-  if (n === 1 || dim === 0) return [{ x: 0, y: 0 }];
-
-  const mean = new Array(dim).fill(0);
-  for (const vec of embeddings) {
-    for (let d = 0; d < dim; d++) mean[d] += vec[d];
-  }
-  for (let d = 0; d < dim; d++) mean[d] /= n;
-  const centered = embeddings.map((vec) => vec.map((v, d) => v - mean[d]));
-  const totalVariance = centered.reduce(
-    (total, row) => total + row.reduce((sum, value) => sum + value * value, 0),
-    0,
-  );
-  if (!Number.isFinite(totalVariance) || totalVariance < 1e-10) return embeddings.map(() => ({ x: 0, y: 0 }));
-
-  const powerIterate = (input: number[][]): number[] => {
-    let dir = new Array(dim).fill(0).map((_, i) => ((i * 37 + 11) % 100) / 100 - 0.5);
-    for (let iter = 0; iter < 30; iter++) {
-      const next = new Array(dim).fill(0);
-      for (const row of input) {
-        let dot = 0;
-        for (let d = 0; d < dim; d++) dot += row[d] * dir[d];
-        for (let d = 0; d < dim; d++) next[d] += dot * row[d];
-      }
-      const norm = Math.hypot(...next);
-      if (norm < 1e-9) break;
-      dir = next.map((v) => v / norm);
-    }
-    return dir;
-  };
-
-  const pc1 = powerIterate(centered);
-  // Deflate: remove pc1 component from each row so pc2 captures orthogonal variance.
-  // (Previous version subtracted inside the dot product incorrectly, collapsing y ≈ 0 → straight line.)
-  const deflated = centered.map((row) => {
-    let d = 0;
-    for (let k = 0; k < dim; k++) d += row[k] * pc1[k];
-    return row.map((v, k) => v - d * pc1[k]);
-  });
-  const pc2 = powerIterate(deflated);
-
-  return centered.map((row) => {
-    let x = 0;
-    let y = 0;
-    for (let d = 0; d < dim; d++) {
-      x += row[d] * pc1[d];
-      y += row[d] * pc2[d];
-    }
-    return { x, y };
-  });
-}
-
-export function ChunkCloud({ sessionId, documents, height = 460, className = '' }: ChunkCloudProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [points, setPoints] = useState<ChunkPoint[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [hover, setHover] = useState<ChunkPoint | null>(null);
-  const [selected, setSelected] = useState<ChunkPoint | null>(null);
-  const [filterDoc, setFilterDoc] = useState<string>('all');
-  const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
-  const dragRef = useRef({ active: false, startX: 0, startY: 0, baseTx: 0, baseTy: 0, moved: false });
-  const screenRef = useRef<Array<{ p: ChunkPoint; sx: number; sy: number }>>([]);
-
-  const load = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      setLoading(true);
-      setError('');
-      const res = await api.intelChunks(sessionId);
-      const allowed = new Set(documents.map((d) => d.doc_id));
-      const raw = res.chunks.filter((c) => {
-        const embedding = c.embedding;
-        return !!embedding
-          && embedding.length > 1
-          && embedding.length === (res.chunks.find((candidate) => candidate.embedding)?.embedding?.length ?? 0)
-          && embedding.every(Number.isFinite)
-          && (allowed.size === 0 || allowed.has(c.docId));
-      });
-      if (raw.length === 0) {
-        setPoints([]);
-        return;
-      }
-      const proj = projectTo2D(raw.map((c) => c.embedding as number[]));
-      const docIndex = new Map<string, number>();
-      documents.forEach((d, i) => { docIndex.set(d.doc_id, i); if (d.filename && !docIndex.has(d.filename)) docIndex.set(d.filename, i); });
-
-      // Compute overall span of projected coordinates so sub-point cluster
-      // offsets stay proportional to the data spread (deterministic, meaningful).
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const p of proj) { if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x; if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
-      const spanX = Math.max(maxX - minX, 1);
-      const spanY = Math.max(maxY - minY, 1);
-      const clusterRadius = Math.min(spanX, spanY) * SUB_CLUSTER_RADIUS_FRAC;
-
-      const built: ChunkPoint[] = [];
-      raw.forEach((c, i) => {
-        const baseX = proj[i].x;
-        const baseY = proj[i].y;
-        const color = colorForIndex(docIndex.get(c.docId) ?? docIndex.get(c.docFilename) ?? 0);
-        for (let n = 0; n < SUB_POINTS_PER_CHUNK; n++) {
-          const h = strHash32(`${c.id}|${n}`);
-          // Deterministic angle and radius within the cluster radius.
-          const angle = (h / 0xFFFFFFFF) * 2 * Math.PI;
-          const radius = clusterRadius * (0.35 + 0.65 * ((h >>> 8) / 0xFF));
-          const x = baseX + Math.cos(angle) * radius;
-          const y = baseY + Math.sin(angle) * radius;
-          built.push({
-            id: `${c.id}-sub-${n}`,
-            chunkId: c.id,
-            docId: c.docId,
-            docFilename: c.docFilename,
-            chunkIndex: c.chunkIndex,
-            text: c.text,
-            x,
-            y,
-            color,
-          });
-        }
-      });
-
-      if (built.length > 1 && built.every((point) => point.x === 0 && point.y === 0)) {
-        setError('Embeddings are present but have no measurable variance, so a semantic 2D projection cannot be shown. Re-index the affected documents with valid embeddings.');
-      }
-      setPoints(built);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load chunk embeddings.');
-    } finally {
-      setLoading(false);
-    }
-  }, [sessionId, documents]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const docCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    const seenChunks = new Map<string, Set<string>>();
-    points.forEach((p) => {
-      let set = seenChunks.get(p.docId);
-      if (!set) { set = new Set(); seenChunks.set(p.docId, set); }
-      if (!set.has(p.chunkId)) { set.add(p.chunkId); counts.set(p.docId, (counts.get(p.docId) ?? 0) + 1); }
-    });
-    return counts;
-  }, [points]);
-
-  const filtered = useMemo(
-    () => (filterDoc === 'all' ? points : points.filter((p) => p.docId === filterDoc)),
-    [points, filterDoc],
-  );
-
-  const layout = useMemo(() => {
-    if (filtered.length === 0) return { pad: 48, minX: 0, minY: 0, spanX: 1, spanY: 1 };
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const p of filtered) {
-      if (p.x < minX) minX = p.x;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.y > maxY) maxY = p.y;
-    }
-    const pad = 48;
-    const spanX = maxX - minX;
-    const spanY = maxY - minY;
-    // A one-dimensional projection is valid data but should remain legible;
-    // keep its actual axis while providing a bounded visual axis for canvas fit.
-    return { pad, minX, minY, spanX: spanX || 1, spanY: spanY || 1 };
-  }, [filtered]);
-
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    const wrap = wrapRef.current;
-    if (!canvas || !wrap) return;
-    const dpr = window.devicePixelRatio || 1;
-    const cw = wrap.clientWidth;
-    const ch = wrap.clientHeight;
-    if (cw === 0 || ch === 0) return;
-    canvas.width = Math.floor(cw * dpr);
-    canvas.height = Math.floor(ch * dpr);
-    canvas.style.width = cw + 'px';
-    canvas.style.height = ch + 'px';
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cw, ch);
-
-    const { pad, minX, minY, spanX, spanY } = layout;
-    const drawW = cw - pad * 2;
-    const drawH = ch - pad * 2;
-    const scale = Math.min(drawW / spanX, drawH / spanY) * view.scale;
-    const offX = pad + (drawW - spanX * scale) / 2 + view.tx;
-    const offY = pad + (drawH - spanY * scale) / 2 + view.ty;
-
-    const screen: Array<{ p: ChunkPoint; sx: number; sy: number }> = [];
-    const byChunk = new Map<string, Array<{ sx: number; sy: number; color: string }>>();
-    for (const p of filtered) {
-      const sx = offX + (p.x - minX) * scale;
-      const sy = offY + (p.y - minY) * scale;
-      screen.push({ p, sx, sy });
-      let members = byChunk.get(p.chunkId);
-      if (!members) { members = []; byChunk.set(p.chunkId, members); }
-      members.push({ sx, sy, color: p.color });
-    }
-
-    // Draw document chunk cluster outlines: a subtle luminous ring around each
-    // real chunk's 10 sub-points, using the document's color. Never invents
-    // clusters -- one ring per real chunk, centered on its actual sub-points.
-    ctx.save();
-    for (const members of byChunk.values()) {
-      let cx = 0, cy = 0;
-      const color = members[0].color;
-      for (const m of members) { cx += m.sx; cy += m.sy; }
-      cx /= members.length; cy /= members.length;
-      let r2 = 0;
-      for (const m of members) { const dx = m.sx - cx, dy = m.sy - cy; r2 += dx * dx + dy * dy; }
-      const r = Math.max(7, Math.sqrt(r2 / members.length) * 1.75);
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.strokeStyle = color;
-      ctx.globalAlpha = 0.22;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.05;
-      ctx.fill();
-    }
-    ctx.restore();
-
-    // Render sub-points (glass markers linked to their parent chunk).
-    for (const { p, sx, sy } of screen) {
-      const r = 2.6;
-      const isHover = hover?.id === p.id;
-      const isSel = selected?.id === p.id;
-      ctx.beginPath();
-      ctx.arc(sx, sy, r, 0, Math.PI * 2);
-      ctx.fillStyle = p.color;
-      ctx.globalAlpha = isSel || isHover ? 1 : 0.72;
-      ctx.fill();
-      if (isSel || isHover) {
-        ctx.globalAlpha = 1;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = isSel ? 12 : 8;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.6;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
-    }
-    ctx.globalAlpha = 1;
-    screenRef.current = screen;
-  }, [filtered, layout, view, hover, selected]);
-
-  useEffect(() => {
-    draw();
-  }, [draw]);
-
-  useEffect(() => {
-    const onResize = () => draw();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [draw]);
-
-  const findHit = (mx: number, my: number): ChunkPoint | null => {
-    let best: ChunkPoint | null = null;
-    let bestD = 100;
-    for (const s of screenRef.current) {
-      const dx = s.sx - mx;
-      const dy = s.sy - my;
-      const d = dx * dx + dy * dy;
-      if (d < bestD) {
-        bestD = d;
-        best = s.p;
-      }
-    }
-    return best;
-  };
-
-  const relPos = (e: { currentTarget: EventTarget; clientX: number; clientY: number }) => {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-
-  const onMove = (e: React.MouseEvent) => {
-    const { x, y } = relPos(e);
-    if (dragRef.current.active) {
-      const dx = x - dragRef.current.startX;
-      const dy = y - dragRef.current.startY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragRef.current.moved = true;
-      setView((v) => ({ ...v, tx: dragRef.current.baseTx + dx, ty: dragRef.current.baseTy + dy }));
-      return;
-    }
-    setHover(findHit(x, y));
-  };
-
-  const onDown = (e: React.MouseEvent) => {
-    const { x, y } = relPos(e);
-    dragRef.current = { active: true, startX: x, startY: y, baseTx: view.tx, baseTy: view.ty, moved: false };
-  };
-
-  const onUp = (e: React.MouseEvent) => {
-    const wasDrag = dragRef.current.moved;
-    dragRef.current.active = false;
-    if (!wasDrag) {
-      const { x, y } = relPos(e);
-      setSelected(findHit(x, y));
-    }
-  };
-
-  const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    setView((v) => ({ ...v, scale: Math.min(6, Math.max(0.4, v.scale * (e.deltaY < 0 ? 1.12 : 0.89))) }));
-  };
-
-  const legend = useMemo(
-    () =>
-      documents
-        .map((d, i) => ({ id: d.doc_id, filename: d.filename, color: colorForIndex(i), count: docCounts.get(d.doc_id) ?? 0 }))
-        .filter((d) => d.count > 0),
-    [documents, docCounts],
-  );
-
+function PassageMark({ color, active = false }: { color: string; active?: boolean }) {
   return (
-    <div className={`w-full ${className}`}>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-1">
-        <div className="flex items-center gap-2">
-          <Cloud size={16} className="text-accent-400" />
-          <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">Chunk Cloud</span>
-          {loading && <Loader2 size={13} className="animate-spin text-slate-500" />}
-          <span className="text-[11px] text-slate-500">PCA projection of embeddings</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            value={filterDoc}
-            onChange={(e) => setFilterDoc(e.target.value)}
-            className="rounded-lg border border-slate-600/50 bg-slate-950/80 px-2.5 py-1.5 text-xs text-slate-100 outline-none focus:border-accent-500/60"
-          >
-            <option value="all">All documents</option>
-            {documents.map((d) => (
-              <option key={d.doc_id} value={d.doc_id}>{d.filename}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => setView({ scale: 1, tx: 0, ty: 0 })}
-            className="rounded-lg border border-slate-600/50 px-2.5 py-1.5 text-xs text-slate-300 transition-colors hover:bg-slate-800 hover:text-slate-100"
-          >
-            Reset view
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</div>
-      )}
-
-      <div
-        ref={wrapRef}
-        className="relative w-full cursor-grab overflow-hidden rounded-xl border border-slate-700/40 bg-slate-950/40 active:cursor-grabbing"
-        style={{ height }}
-      >
-        <canvas
-          ref={canvasRef}
-          onMouseMove={onMove}
-          onMouseDown={onDown}
-          onMouseUp={onUp}
-          onMouseLeave={() => { dragRef.current.active = false; setHover(null); }}
-          onWheel={onWheel}
-          className="block"
-        />
-        {!loading && filtered.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-slate-500">
-            No chunk embeddings yet. Upload and index documents first.
-          </div>
-        )}
-        <div className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] text-slate-500">
-          {new Set(filtered.map((p) => p.chunkId)).size} real chunks · {filtered.length} markers (10 per chunk) · scroll to zoom · drag to pan · click a point for details
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-700/40 bg-slate-900/40 p-3">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Documents</p>
-          <div className="flex max-h-40 flex-wrap gap-x-3 gap-y-1.5 overflow-y-auto">
-            {legend.map((d) => (
-              <button
-                key={d.id}
-                onClick={() => setFilterDoc(filterDoc === d.id ? 'all' : d.id)}
-                className={`inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] transition-colors ${
-                  filterDoc === d.id ? 'bg-accent-500/10 text-accent-300' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                }`}
-              >
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: d.color }} />
-                <span className="max-w-[140px] truncate">{d.filename}</span>
-                <span className="font-mono text-[10px] text-slate-500">{d.count}</span>
-              </button>
-            ))}
-            {legend.length === 0 && <span className="text-[11px] text-slate-500">No chunks</span>}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-slate-700/40 bg-slate-900/40 p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Chunk details</p>
-            {selected && (
-              <button
-                onClick={() => setSelected(null)}
-                className="rounded px-1.5 py-0.5 text-[11px] text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-          {selected ? (
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                <span className="h-2 w-2 rounded-full" style={{ background: selected.color }} />
-                <span className="text-slate-300">{selected.docFilename}</span>
-                <span className="font-mono text-slate-500">#{selected.chunkIndex}</span>
-              </div>
-              <p className="max-h-24 overflow-y-auto rounded-md bg-slate-950/60 p-2 text-[11px] leading-relaxed text-slate-300">
-                {selected.text}
-              </p>
-            </div>
-          ) : (
-            <p className="text-[11px] text-slate-500">
-              Hover or click a point to inspect its chunk text and source document.
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
+    <g className="passage-mark">
+      <circle r="17" fill={color} opacity=".1" />
+      <circle r="10" fill="#101b31" stroke={color} strokeWidth="1.5" />
+      <circle r="5" fill={color} opacity=".82" />
+      <circle cx="-2" cy="-2" r="1.8" fill="#fff" opacity=".92" />
+      {active && <circle r="15" fill="none" stroke="#d7f7ff" strokeWidth="1.2" className="passage-selection-ring" />}
+    </g>
   );
 }
 
+function SourceRegion({
+  cluster,
+  isSourceMode,
+}: {
+  cluster: { x: number; y: number; rx: number; ry: number; id: string; count: number; name: string };
+  isSourceMode: boolean;
+}) {
+  const color = colorFor(cluster.id);
+  return (
+    <g className="source-region" style={{ color }} pointerEvents="none">
+      {isSourceMode && <ellipse cx={cluster.x} cy={cluster.y} rx={cluster.rx} ry={cluster.ry} fill="currentColor" fillOpacity=".035" stroke="currentColor" strokeOpacity=".2" strokeWidth="1" />}
+    </g>
+  );
+}
+
+export function ProjectionPreview({ chunks }: { chunks: StoredChunk[] }) {
+  const sample = chunks.filter(hasProjection).slice(0, CLOUD_PAGE_SIZE);
+  const points = cloudPoints(sample, 'projection');
+  return <div className="cloud-mini"><svg viewBox="0 0 1000 570" aria-label="Stored embedding projection preview">{sample.map(c => { const p = points.get(c.id)!; return <g key={c.id} transform={`translate(${p.x} ${p.y})`}><PassageMark color={colorFor(c.docId)}/></g>; })}</svg></div>;
+}
+export function ChunkCloud({ sessionId, revision = 0 }: { sessionId: string; revision?: number; height?: number }) {
+  const { data, loading, error } = useKnowledgeData(sessionId, 'chunks', revision);
+  const documents = useKnowledgeData(sessionId, 'graph', revision);
+  const [params, setParams] = useSearchParams();
+  const [query, setQuery] = useState(params.get('q') ?? '');
+  const [filter, setFilter] = useState(params.get('document') ?? '');
+  const [selectedId, setSelectedId] = useState(params.get('chunk') ?? '');
+  const [hovered, setHovered] = useState('');
+  const [mode, setMode] = useState<CloudMode>('source');
+  const [page, setPage] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ x: number; y: number; px: number; py: number }>();
+  const uid = useId().replace(/:/g, '');
+  const chunks = data?.chunks ?? EMPTY_CHUNKS;
+  const selected = chunks.find(c => c.id === selectedId);
+  const preview = chunks.find(c => c.id === hovered);
+  const groups = useMemo(() => {
+    const sources = new Map<string, { id: string; name: string; count: number }>();
+    chunks.forEach(chunk => {
+      const source = sources.get(chunk.docId);
+      if (source) source.count++;
+      else sources.set(chunk.docId, { id: chunk.docId, name: chunk.docFilename, count: 1 });
+    });
+    return [...sources.values()];
+  }, [chunks]);
+  const matches = useMemo(() => chunks.filter(c => (!filter || c.docId === filter) && (c.text + ' ' + c.docFilename).toLowerCase().includes(query.toLowerCase())), [chunks, filter, query]);
+  const pages = Math.max(1, Math.ceil(matches.length / CLOUD_PAGE_SIZE));
+  const currentPage = Math.min(page, pages - 1);
+  const visible = useMemo(() => matches.slice(currentPage * CLOUD_PAGE_SIZE, (currentPage + 1) * CLOUD_PAGE_SIZE), [matches, currentPage]);
+  const points = useMemo(() => cloudPoints(visible, mode), [visible, mode]);
+  const matchingCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    matches.forEach(chunk => counts.set(chunk.docId, (counts.get(chunk.docId) ?? 0) + 1));
+    return counts;
+  }, [matches]);
+  const clusters = useMemo(() => groups.flatMap(group => {
+    const members = visible.filter(chunk => chunk.docId === group.id && points.has(chunk.id));
+    if (!members.length) return [];
+    const coords = members.map(chunk => points.get(chunk.id)!);
+    const xs = coords.map(point => point.x), ys = coords.map(point => point.y);
+    const x = xs.reduce((sum, value) => sum + value, 0) / xs.length;
+    const y = ys.reduce((sum, value) => sum + value, 0) / ys.length;
+    return [{
+      ...group,
+      count: members.length,
+      matchingCount: matchingCounts.get(group.id) ?? members.length,
+      x,
+      y,
+      rx: Math.max(48, (Math.max(...xs) - Math.min(...xs)) / 2 + 22),
+      ry: Math.max(40, (Math.max(...ys) - Math.min(...ys)) / 2 + 22),
+    }];
+  }), [groups, visible, points, matchingCounts]);
+  const neighbors = sourceNeighbors(chunks, selected);
+  const fit = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
+  const updateParams = (values: Record<string, string>) => {
+    setParams(current => {
+      const next = new URLSearchParams(current);
+      Object.entries(values).forEach(([key, value]) => value ? next.set(key, value) : next.delete(key));
+      return next;
+    }, { replace: true });
+  };
+  const updateParam = (key: string, value: string) => updateParams({ [key]: value });
+  const setSearch = (value: string) => { setQuery(value); updateParam('q', value); };
+  const setSourceFilter = (value: string) => { setFilter(value); updateParam('document', value); };
+  const closeSelection = () => { setSelectedId(''); updateParam('chunk', ''); };
+  useEffect(() => { setPage(0); setHovered(''); fit(); }, [query, filter, mode, sessionId]);
+  useEffect(() => { setSelectedId(params.get('chunk') ?? ''); setQuery(params.get('q') ?? ''); setFilter(params.get('document') ?? ''); }, [params]);
+  useEffect(() => { setSelectedId(params.get('chunk') ?? ''); setHovered(''); }, [sessionId]);
+  useEffect(() => { const index = matches.findIndex(c => c.id === selectedId); if (index >= 0) setPage(Math.floor(index / CLOUD_PAGE_SIZE)); }, [selectedId, matches]);
+  const select = (c: StoredChunk) => { setSelectedId(c.id); updateParam('chunk', c.id); setHovered(''); };
+  const readNeighbor = (c?: StoredChunk) => { if (!c) return; setQuery(''); setFilter(c.docId); setSelectedId(c.id); updateParams({ q: '', document: c.docId, chunk: c.id }); setHovered(''); setPage(Math.floor(chunks.filter(v => v.docId === c.docId).findIndex(v => v.id === c.id) / CLOUD_PAGE_SIZE)); fit(); };
+  const focusPassage = () => { if (!selected) return; const p = points.get(selected.id); if (p) { setZoom(2); setPan({ x: (500 - p.x) * 2, y: (285 - p.y) * 2 }); } else { setMode('source'); readNeighbor(selected); } };
+  const localPoint = (svg: SVGSVGElement, x: number, y: number) => { const matrix = svg.getScreenCTM(); return matrix ? new DOMPoint(x, y).matrixTransform(matrix.inverse()) : { x, y }; };
+  return <>
+    <div className="knowledge-filters explorer-filters"><label>Search the collection<input type="search" value={query} onChange={e => setSearch(e.target.value)} placeholder="Find a phrase, idea or source…"/></label><div className="explorer-segment" aria-label="Cloud layout"><button aria-pressed={mode === 'source'} onClick={() => setMode('source')}>By source</button><button aria-pressed={mode === 'projection'} onClick={() => setMode('projection')}>By embedding</button></div><button onClick={() => { setParams({}); setQuery(''); setFilter(''); setSelectedId(''); setMode('source'); fit(); }}>Reset</button></div>
+    <KnowledgeStatus loading={loading} error={error} empty={!chunks.length}/>
+    {!loading && !error && !!chunks.length && <>
+      <div className="explorer-source-strip" aria-label="Filter by source"><button aria-pressed={!filter} onClick={() => setSourceFilter('')}>All sources <span>{chunks.length}</span></button>{groups.map(g => <button key={g.id} aria-pressed={filter === g.id} onClick={() => setSourceFilter(filter === g.id ? '' : g.id)}><i style={{ background: colorFor(g.id) }}/><span className="source-name">{g.name}</span><span>{g.count}</span></button>)}</div>
+      <div className={'knowledge-workspace' + (selected ? ' has-inspector' : '')}>
+        <section className="atlas-map cloud-explorer">
+          <header className="atlas-section-heading"><div><span className="knowledge-kicker">PASSAGE EXPLORER / {mode === 'source' ? 'BY SOURCE' : 'BY EMBEDDING'}</span><h2>{mode === 'source' ? 'Passages grouped by source' : 'Stored embedding projection'}</h2><p>{mode === 'source' ? 'Each point is a passage. Color and region identify its source document.' : 'Positions use stored 2D projections. Passages without coordinates remain available below.'}</p></div><Orbit size={22}/></header>
+          <div className="viz-meta"><span><strong>{matches.length}</strong> matching passages · <strong>{visible.length}</strong> on this page · <strong>{points.size}</strong> plotted</span><div className="viz-controls"><button aria-label="Zoom out" onClick={() => setZoom(z => Math.max(.5, z / 1.25))}>−</button><span>{Math.round(zoom * 100)}%</span><button aria-label="Zoom in" onClick={() => setZoom(z => Math.min(4, z * 1.25))}>+</button><button onClick={fit}>Fit view</button></div></div>
+          <div className="cloud-stage">
+            <svg viewBox="0 0 1000 570" role="group" aria-label={mode === 'source' ? 'Passages grouped by source document' : 'Passage embedding projection'} tabIndex={0} onKeyDown={e => { if (e.target !== e.currentTarget) return; const delta = { ArrowLeft: [35, 0], ArrowRight: [-35, 0], ArrowUp: [0, 35], ArrowDown: [0, -35] }[e.key]; if (delta) { e.preventDefault(); setPan(p => ({ x: p.x + delta[0], y: p.y + delta[1] })); } }}
+              onPointerDown={e => { if ((e.target as Element).closest('[role="button"]')) return; const p = localPoint(e.currentTarget, e.clientX, e.clientY); drag.current = { ...p, px: pan.x, py: pan.y }; e.currentTarget.setPointerCapture(e.pointerId); setHovered(''); }}
+              onPointerMove={e => { if (!drag.current) return; const p = localPoint(e.currentTarget, e.clientX, e.clientY); setPan({ x: drag.current.px + p.x - drag.current.x, y: drag.current.py + p.y - drag.current.y }); }} onPointerUp={() => { drag.current = undefined; }} onPointerCancel={() => { drag.current = undefined; }}>
+              <defs><pattern id={uid + 'grid'} width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".7" fill="#b3d7ff" opacity=".12"/></pattern></defs>
+              <rect width="1000" height="570" fill={`url(#${uid}grid)`}/>
+              <g className="cloud-world" transform={`translate(${500 + pan.x} ${285 + pan.y}) scale(${zoom}) translate(-500 -285)`}>
+                {clusters.map(g => <SourceRegion key={g.id} cluster={g} isSourceMode={mode === 'source'}/>)}
+                {mode === 'source' && clusters.map(g => {
+                  const labelY = Math.min(525, Math.max(24, g.y + g.ry + 18));
+                  return <g key={'label-' + g.id} className="cloud-source-label" role="button" tabIndex={0} aria-label={'Filter to ' + g.name} transform={`translate(${g.x} ${labelY})`} onClick={() => setSourceFilter(filter === g.id ? '' : g.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSourceFilter(filter === g.id ? '' : g.id); } }}>
+                    <title>{g.name}</title><rect x="-100" y="-13" width="200" height="33" rx="8" fill="#111d32e8" stroke={colorFor(g.id)} strokeOpacity=".4"/><text textAnchor="middle" y="0" fill="#dfedfa" fontSize="10">{g.name.length > 28 ? g.name.slice(0, 25) + '…' : g.name}</text><text textAnchor="middle" y="13" fill="#abc5dc" fontSize="8">{g.count} of {g.matchingCount} matching passages shown</text>
+                  </g>;
+                })}
+                {selected && mode === 'source' && [neighbors.previous, neighbors.next].map(c => { const a = points.get(selected.id), b = c && points.get(c.id); return a && b ? <line key={c!.id} className="passage-sequence" x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#d3f6ff" strokeDasharray="3 5" opacity=".7"/> : null; })}
+                {visible.map(c => { const p = points.get(c.id); if (!p) return null; const active = selectedId === c.id || hovered === c.id; return <g key={c.id} className={'cloud-particle' + (active ? ' is-active' : '')} data-chunk-id={c.id} role="button" tabIndex={0} aria-label={`${c.docFilename}, chunk ${c.chunkIndex + 1}`} aria-pressed={selectedId === c.id} transform={`translate(${p.x} ${p.y})`} opacity={selected && selected.docId !== c.docId ? .25 : 1} onClick={() => select(c)} onMouseEnter={() => setHovered(c.id)} onMouseLeave={() => setHovered('')} onFocus={() => setHovered(c.id)} onBlur={() => setHovered('')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(c); } }}>
+                  <title>{c.docFilename + ': ' + c.text.slice(0, 160)}</title><circle r="20" fill="transparent"/><PassageMark color={colorFor(c.docId)} active={active}/>
+                </g>; })}
+              </g>
+            </svg>
+            {preview && <div className="cloud-hover-preview" aria-live="polite"><span className="knowledge-kicker">PASSAGE {preview.chunkIndex + 1} / {preview.docFilename}</span><p>{preview.text.slice(0, 220)}{preview.text.length > 220 ? '…' : ''}</p><small>Select to read and follow the source.</small></div>}
+            {!matches.length && <div className="cloud-overlay-empty"><Search size={28}/><p>No passages match. Try another phrase or source.</p></div>}
+            {!!matches.length && !points.size && <div className="cloud-overlay-empty"><Orbit size={28}/><p>No embeddings on this page. Every passage is available in Source islands.</p><button onClick={() => setMode('source')}>Show source islands</button></div>}
+          </div>
+          <div className="viz-footer"><span>Drag to pan · select a point to read its passage</span><div className="pager"><button aria-label="Previous passages" disabled={!currentPage} onClick={() => { setPage(currentPage - 1); fit(); }}>Previous</button><span>Page {currentPage + 1} of {pages}</span><button aria-label="Next passages" disabled={currentPage + 1 >= pages} onClick={() => { setPage(currentPage + 1); fit(); }}>Next</button></div></div>
+          <p className="explorer-map-note">{mode === 'source' ? 'Regions and color identify the source document. Selecting a passage connects it to the previous and next passage in that source.' : `Stored 2D embedding projection. ${visible.length - points.size} passages on this page have no projection; they remain available in the reading list or in By source view.`}</p>
+        </section>
+        {selected && <Inspector title={`Passage ${selected.chunkIndex + 1}`} onClose={closeSelection}><span className="knowledge-kicker">READ THE SOURCE</span><h3>{selected.docFilename}</h3><div className="chips">{selected.page && <span className="badge">Page {selected.page}</span>}{selected.kind && <span className="badge">{selected.kind}</span>}</div><blockquote className="passage-full-text">{selected.text}</blockquote><div className="passage-stepper"><button aria-label="Previous source passage" disabled={!neighbors.previous} onClick={() => readNeighbor(neighbors.previous)}><ArrowLeft size={14}/> Previous</button><button aria-label="Next source passage" disabled={!neighbors.next} onClick={() => readNeighbor(neighbors.next)}>Next <ArrowRight size={14}/></button></div><button className="explorer-focus" onClick={focusPassage}><Crosshair size={15}/> Locate in cloud</button><div className="inspector-actions">{documents.data?.documents.find(d => d.doc_id === selected.docId)?.source_available && <a className="veris-btn-primary" href={sourceUrl(sessionId, selected.docId, selected.page)} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Open source</a>}<Link to={`/intelligence?doc=${encodeURIComponent(selected.docId)}&q=${encodeURIComponent('Explain this passage: ' + selected.text.slice(0, 600))}`}>Ask about this passage <ArrowRight size={14}/></Link><Link to={'/documents?doc=' + encodeURIComponent(selected.docId)}>View document</Link></div></Inspector>}
+      </div>
+      <section className="explorer-reading-list"><header><div><span className="knowledge-kicker">READING DESK</span><h2>{matches.length} matching passages</h2></div>{filter && <button onClick={() => setSourceFilter('')}><X size={13}/> Clear source</button>}</header><div className="passage-cards">{visible.map(c => <button key={c.id} aria-pressed={selectedId === c.id} onClick={() => select(c)}><span><i style={{ background: colorFor(c.docId) }}/>{c.docFilename} · Passage {c.chunkIndex + 1}{c.page ? ` · Page ${c.page}` : ''}</span><p>{c.text.slice(0, 160)}{c.text.length > 160 ? '…' : ''}</p><small>Read passage <ArrowRight size={13}/></small></button>)}</div></section>
+    </>}
+  </>;
+}
 export default ChunkCloud;

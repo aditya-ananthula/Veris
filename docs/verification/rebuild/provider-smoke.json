@@ -1,0 +1,7 @@
+{
+  "configured_provider": "NVIDIA",
+  "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+  "synthetic_source_only": true,
+  "passed": true,
+  "elapsed_seconds": 3.28
+}

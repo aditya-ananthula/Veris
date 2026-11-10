@@ -2,7 +2,9 @@ export interface AskResult {
   answer: string;
   sources: string[];
   validation: string;
+  citations?: Citation[];
 }
+export interface Citation { chunk_id: string; doc_id: string; filename: string; page: number | null; excerpt: string }
 
 export interface DocumentMeta {
   filename: string;
@@ -36,6 +38,7 @@ export interface ChatMessage {
   sources?: string[];
   validation?: string;
   error?: boolean;
+  citations?: Citation[];
 }
 
 export interface IntelDocument {
@@ -47,6 +50,14 @@ export interface IntelDocument {
   extraction_status: string;
   extraction_error: string | null;
   chunks: number;
+  created_at?: number | null;
+  size_bytes?: number | null;
+  source_available?: boolean;
+  index_available?: boolean;
+  recorded_chunks?: number;
+  key_topics?: string[];
+  summary?: string | null;
+  entity_count?: number;
 }
 
 export interface IntelFact {
@@ -172,12 +183,17 @@ export interface IntelStatsResponse {
   entities: number;
   facts: number;
   relationships: number;
+  topics?: number;
+  storage_bytes?: number;
+  sources_with_size?: number;
 }
 
 export interface DocumentGraphEdge {
+  shared_entities?: Array<{ entity_id: string; name: string }>;
   source: string;
   target: string;
   weight: number;
+  similarity: number;
   rel_type: string;
   evidence: string;
 }
@@ -221,30 +237,6 @@ export interface IntelEntityDetailResponse {
   related_count: number;
 }
 
-/* ---- Chart / dashboard types ---- */
-
-export interface StatCard {
-  label: string;
-  value: string | number;
-  subtext?: string;
-  delta?: string;
-  deltaPositive?: boolean;
-  icon?: React.ComponentType<{ size?: number; className?: string }>;
-  iconColor?: string;
-}
-
-export interface DonutSeries {
-  label: string;
-  value: number;
-  color: string;
-}
-
-export interface BarSeries {
-  label: string;
-  value: number;
-  color?: string;
-}
-
 export interface DependencyNode {
   id: string;
   label: string;
@@ -264,72 +256,5 @@ export interface DependencyEdge {
 export interface DependencyGraph {
   nodes: DependencyNode[];
   edges: DependencyEdge[];
-}
-
-/* ---- Ranked Document Graph types ---- */
-
-export interface DocumentNode {
-  id: string;
-  label: string;
-  filename: string;
-  chunks: number;
-  rank: number;
-  status: 'indexed' | 'extracting' | 'complete' | 'failed' | 'pending';
-  size: number;       // rendered node radius
-  x: number;
-  y: number;
-}
-
-export interface DocumentEdge {
-  id: string;
-  source: string;
-  target: string;
-  relType: string;
-  evidence: string;
-  verified: boolean;
-}
-
-export interface DocumentGraph {
-  nodes: DocumentNode[];
-  edges: DocumentEdge[];
-}
-
-export interface DocumentRankEntry {
-  rank: number;
-  filename: string;
-  chunks: number;
-  status: string;
-  docId: string;
-}
-
-/* ---- Chunk Cloud types ---- */
-
-export interface ChunkPoint {
-  id: string;
-  chunkId: string;
-  docId: string;
-  docFilename: string;
-  chunkIndex: number;
-  text: string;
-  x: number;
-  y: number;
-  color: string;
-}
-
-export interface ChunkCloudData {
-  points: ChunkPoint[];
-  documents: { id: string; filename: string; color: string; chunkCount: number }[];
-  totalChunks: number;
-  projectionMethod: string;
-}
-
-/* ---- UI interaction types ---- */
-
-export interface ExpandableCardProps {
-  children: React.ReactNode;
-  header: React.ReactNode;
-  className?: string;
-  expanded?: boolean;
-  onToggle?: () => void;
 }
 

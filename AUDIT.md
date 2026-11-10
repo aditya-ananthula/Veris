@@ -1,58 +1,59 @@
-# Veris UI audit — 2026-11-02
+# Veris UI audit — Light Glass rebuild
+Date: 2026-11-02
 
-## Scope and baseline
-
-Read every frontend page, component, hook, service, type and configuration, plus FastAPI routes, retrieval, and SQLite graph/detail queries before implementation. The worktree already contains extensive staged and unstaged work; it is the baseline, not HEAD. Preserve existing work. No AGENTS.md was found. The supplied attachment is the reference (the proposed docs/reference path does not yet exist).
-
-Hard invariant: preserve GalaxyBackground.tsx, its mount/props, body background, #gl rules, background tokens and overview orb anchor geometry. Store a baseline and compare these explicitly. Reference targets are luminous icon nodes, translucent panels, readable chips, restrained cyan/violet glow; reference numbers are not data.
+## Scope
+Read every frontend page/component/hook/service/type plus FastAPI routes and retrieval logic before any changes.
 
 ## Architecture
+- React 18 + TypeScript + Vite + BrowserRouter under `AppLayout`.
+- Routes: `/`, `/documents`, `/intelligence`, `/knowledge` + `graph/chunks/entities`, `/settings`, `/help`.
+- `KnowledgeLayout` context shares `sessionId` + `refresh` revision. `useSession` reads/writes `localStorage`. `useKnowledgeData` deduplicates/caches 60s.
+- FastAPI backend supplies Chroma passages and SQLite facts/entities/relationships. `api.ts` uses `fetch` with timeout + 2 retries.
+- Styling: single `design.css` (prior work), Tailwind config present but unused, inline styles.
 
-React 18 + TypeScript, Vite, BrowserRouter nested under AppLayout. Routes: /, /documents, /intelligence, /knowledge and graph/chunks/entities children, /settings, /help. KnowledgeLayout context shares session and refresh revision. useSession reads browser localStorage; useKnowledgeData deduplicates requests and caches for 60 seconds. Other pages use local effects/state. FastAPI supplies Chroma passages and SQLite facts/entities/relationships. API service uses fetch with timeout. Styling mixes Tailwind utilities, duplicate CSS blocks, inline styles and undefined accent/ink Tailwind tokens.
+## Critical: design / visual
+- **No light glass theme exists.** Current tokens are dark (`--bg-deep: #070a12`). Buttons transparent-black; surfaces look smoky on light backgrounds.
+- **Veris "V" logo mark present** in sidebar brand — must be removed, plain text only.
+- **AI orb** `AiOrb.tsx` exists but only used in `AssistantOrb`; Overview hero uses size=300. Spec: restore to hero + chat idle/thinking, redesign with iridescent tendrils on light bg.
+- **Sidebar on light background lacks contrast** — `--fg-soft` on white glass too faint.
+- **Knowledge pages are split-view**, not full-screen visual pages. Inspector always visible, fixed heights, `knowledge-workspace` min-height 400px (too small).
+- **Chunk Cloud / Document Graph / Entities** render as paged grids rather than immersive full-bleed visuals. No mind map layout for entities.
+- **MeshGradient.tsx unused legacy** — keep for baseline invariant. **GalaxyBackground.tsx** — keep immutable.
 
-## Ranked findings
+## High: interaction / UX
+- **IntelligencePage**: uploads happen correctly now. Cited-evidence works. Contradiction tab works. Composer multiline OK.
+- **DocumentsPage**: dragover cancellation present. List-load errors shown. Upload failure partial-refresh gap remains.
+- **MessageBubble** exists but unused in main chat — should be primary renderer.
+- **MarkdownRenderer** works (fixed double-escape, keys, unclosed fence).
+- **AiOrb** needs light-glass redesign: iridescent gradient, cursor reaction, thinking pulse.
+- **Settings** theme toggle includes "dark" — spec says light glass only; remove dark option.
+- **No skeleton loaders**, minimal empty states, errors have retry but inconsistent styling.
+- **Focus-ring consistency** lacking. ARIA mostly present but not comprehensive.
+- **Mobile**: sidebar offscreen nav lacks opacity; mobile orb anchor may exceed bounds.
+- `veris-kbd` uses `rgba(0,0,0,0.1)` — black translucency, must be removed.
 
-### Critical functional gaps
+## Medium: code quality
+- `types/index.ts` has unused chart/expandable types.
+- `DocumentGraphEdge` similarity is shared-entity overlap — must be labeled as such, not semantic percentage.
+- `useKnowledgeData` cached data not invalidated by uploads/deletes (partial — `clearKnowledgeCache` exists).
+- Hardcoded pixel sizes throughout (174, 142, 520px canvases, fixed 400px heights).
+- `Input.tsx` uses inline styles instead of CSS classes.
+- `api.ts` backend launch instructions leak into product error messages.
 
-- IntelligencePage: attachment filenames are appended to questions without uploading bytes; cited-evidence button does nothing; contradiction tab is a placeholder; comparison throws away returned claims/evidence. Search query effect can miss navigation updates or duplicate questions. Composer promises multiline while using input. Errors loading documents are swallowed.
-- GlassGraph / ChunkCloud: zoom, wheel zoom, drag-pan, fit buttons and expanded view violate explicit requirements. Entire collections shrink into fixed 520px canvases; tiny labels become unreadable. No bounded graph rendering or real hover highlight. Ten markers per chunk are decoration, not ten chunks.
-- DocumentsPage: missing dragover cancellation can break drops; list-load errors silently appear as empty collections; upload failure skips list refresh after partial success. Status conflates indexed with extraction complete. Force-remove offers local-only deletion, hiding backend errors.
+## Backend API contracts (preserved)
+`GET /health`, `GET /capabilities`, `POST /ask`, `POST /absorb`, `GET /documents`, `DELETE /documents`, `GET /intel/documents`, `GET /intel/entities`, `GET /intel/relationships`, `GET /intel/document-graph`, `GET /intel/entity/:id`, `GET /intel/chunks`, `POST /intel/contradictions/scan`, `GET /intel/contradictions`, `POST /intel/compare-documents`, `POST /intel/retry/:docId`.
 
-### High: layout, navigation, evidence
-
-- KnowledgeLayout: generic title/description on every child; no per-page stats; loading is plain text; retry is instructions rather than a button. DocumentGraphPage / EntitiesPage: always-visible inspector takes visual space, drops below at <=1200px and causes page scrolling. Fixed-height visual plus headings exceeds viewport. No legend. Filters only dim nodes in graph. Selection can remain out of filter context.
-- DocumentGraphPage: real edge weights ignored by drawing. Backend similarity is a count-derived heuristic, not measured embedding similarity (intel_store.get_document_graph). Do not present as semantic percentage.
-- EntitiesPage: no document filter; detail has fact evidence but no direct passage navigation; all relationship labels are ambiguous arrows; detail failures lack retry.
-- ChunkCloud: all particles and labels rendered regardless of size; canvas has no hover tooltip; passage list exists but visual accessibility is weak; large groups are not paged.
-- AppLayout: Ctrl K is advertised but not implemented; main remounts on every route; no skip link. Sidebar: invalid JSX SVG attributes cause console warnings; offscreen mobile nav is keyboard focusable, lacks expanded state/Escape behavior and an opaque enough mobile surface.
-- OverviewPage: duplicate upload implementation with global DOM toast, no progress or disabled state; Compare links to Ask; all four cards have oversized fixed minimums.
-- SettingsPage: no retry/loading; defaults claim server settings before fetching; theme radio has no associated label or behavior; empty Danger Zone creates misleading warnings.
-- HelpPage: claims raw uploads are stored on disk, calls chunk layout semantic neighborhoods, claims isolation without noting session identifier limitations, and documents a nonfunctional shortcut.
-
-### Medium: component and styling inventory
-
-- ui.tsx: numerous unused primitives; Button does not forward click props, Input uses any; inconsistent control states/sizing and translucent error contrast.
-- UploadDropzone: reusable but unused, keyboard Space scrolls, hidden input click bubbles, aria-disabled missing, no upload progress.
-- MessageBubble: useful but unused; clipboard success shown before promise resolves; source excerpts available but plain answer formatting. Integrate it rather than duplicate.
-- MarkdownRenderer: double-escapes text React already escapes, repeated inline keys, recursive shared regex state, unvalidated links, unclosed code fence loses final line; narrow table/code containers need internal overflow.
-- AiOrb / AssistantOrb: assistant lacks visible busy status, evidence and keyboard dismissal; can obscure bottom controls. Orb visual remains stylistically compatible.
-- RankedDocumentGraph / DependencyMap: thin adapters with corrupted separators, no node size/connection semantics. charts/index: correct active exports.
-- knowledgeLayout: deterministic layout is useful but fixed square grids and unbounded particle generation are not responsive; palette separate from CSS.
-- useKnowledgeData: cached data not invalidated by uploads/deletes. useSession: no handling of unavailable localStorage. api.ts: timeout ends before response body, technical backend launch instructions leak into product error; otherwise shared service is reusable.
-- types/index: unused chart/expandable types left from deleted charts; DocumentGraphEdge omits backend similarity.
-- main: routes already separated and deep-linkable; preserve route contracts. KnowledgePage: useful index, but question marks replace punctuation and loading counts.
-- styles/index.css: repeated button/tab/surface rules, undefined --btn-gradient, dozens of hardcoded colors/radii/type sizes. body overflow hidden masks problems; Documents filter widths exceed mobile width; mobile orb anchor may extend page bounds. Background styles must be retained separately from cleanup.
-- MeshGradient: unused legacy background; preserve file for hard background invariant rather than repurpose it. GalaxyBackground: approved shader is immutable for this task; existing reduced-motion cleanup issue is outside scope.
-- Tests: duplicate sanity tests; marker test mirrors an implementation constant; missing route/layout/interaction regressions. Frontend config supports lint/type/build; browser automation dependency already installed locally. Vite /documents proxy collides with the browser route on hard reload.
-
-## Implementation acceptance
-
-1. Tokenized shared controls and surfaces, accessible focus, meaningful loading/empty/errors/retries, responsive all pages.
-2. Three independent viewport-contained visual pages, own heading/stats/filters/legend, inspect on click, ResizeObserver fitting without any zoom/pan/fullscreen; bounded paging maintains readable nodes at 5/500 sizes. Node/edge facts come from API.
-3. Complete upload, question/citations, compare and contradiction flows using existing contracts; preserve data and session behavior.
-4. Typecheck, lint, build, meaningful component and backend tests; run all routes at 360/768/1280/1920 and inspect rendered artifacts including populated visuals and error/empty states.
-5. Background baseline diff, CHANGES.md and countable RESUME_FACTS.md, measured latency only if real document retrieval runs.
-
-## Design decision
-
-Use responsive SVG with measured pixel coordinates and bounded pages, never scale text below readable size. Emphasize highest-degree entity as a central hub when space permits; use collision-free cells on narrow screens. Use a single particle per stored chunk, paged document clusters and passage access, with honest totals. Side inspectors overlay on smaller widths, keeping page size stable. Retain backend evidence weighting, explicitly label its shared-connection basis rather than invent semantic similarity.
+## Acceptance criteria
+1. Light glass theme everywhere; no black translucency anywhere.
+2. Veris logo mark removed; plain text brand only.
+3. AI orb restored to hero + chat, redesigned with tendrils, iridescent on light bg.
+4. Button system: primary (glowy), secondary, ghost, destructive, icon — all states.
+5. Chat interface rebuilt in light glass, full height, input pinned bottom.
+6. Three knowledge pages — full-screen visuals, own route, deep-linkable.
+7. Entities = mind map with visible links + labels.
+8. Document Graph = glossy gem nodes, curved gradient edges, similarity-labeled.
+9. Chunk Cloud = luminous particle clusters per document.
+10. No zoom/pan controls. Auto-fit on load/resize via ResizeObserver.
+11. Responsive 360→1920, no overflow/clipping.
+12. tsc clean, eslint clean, vitest pass, build OK.
+13. CHANGES.md + RESUME_FACTS.md.

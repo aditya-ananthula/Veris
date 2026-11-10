@@ -21,6 +21,7 @@ def _float(name, default):
 
 APP_NAME = os.environ.get("VERIS_APP_NAME", "Veris API")
 NVIDIA_MODEL = os.environ.get("VERIS_NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
+NVIDIA_BASE_URL = os.environ.get("VERIS_NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
 DISTANCE_THRESHOLD = _float("VERIS_DISTANCE_THRESHOLD", 1.5)
 MAX_UPLOAD_BYTES = _int("VERIS_MAX_UPLOAD_BYTES", 10 * 1024 * 1024)
 SESSION_TTL_SECONDS = _int("VERIS_SESSION_TTL_SECONDS", 3600)
@@ -33,8 +34,8 @@ ALLOWED_ORIGINS = [
 
 DATA_DIR = os.environ.get("VERIS_DATA_DIR", "data")
 SQLITE_PATH = os.environ.get("VERIS_SQLITE_PATH", os.path.join(DATA_DIR, "veris.db"))
-# Persistent Chroma is opt-in: unset/empty keeps the Phase 1-2 ephemeral behavior.
-CHROMA_PERSIST_DIR = os.environ.get("VERIS_CHROMA_DIR", "").strip()
+# Persistent by default; an explicitly empty VERIS_CHROMA_DIR opts into ephemeral storage.
+CHROMA_PERSIST_DIR = os.environ.get("VERIS_CHROMA_DIR", os.path.join(DATA_DIR, "vectors")).strip()
 # Structured extraction runs inline after upload; "off" keeps RAG-only behavior.
 EXTRACTION_ENABLED = os.environ.get("VERIS_EXTRACTION_ENABLED", "on").lower() not in {"0", "off", "false", "no"}
 EXTRACTION_MAX_CHARS = _int("VERIS_EXTRACTION_MAX_CHARS", 12000)

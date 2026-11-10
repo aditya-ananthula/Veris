@@ -1,13 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { SUB_POINTS_PER_CHUNK } from './components/charts/ChunkCloud';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
 import { render } from '@testing-library/react';
-
-describe('Chunk Cloud 10:1 visual-marker-to-chunk relationship', () => {
-  it('exports exactly 10 sub-points per chunk', () => {
-    expect(SUB_POINTS_PER_CHUNK).toBe(10);
-  });
-});
 
 describe('MarkdownRenderer', () => {
   it('renders bold and code without raw markdown symbols', () => {
@@ -20,7 +13,7 @@ describe('MarkdownRenderer', () => {
   });
 
   it('renders a fenced code block', () => {
-    const { container } = render(<MarkdownRenderer text="```ts\nconst x = 1;\n```" />);
+    const { container } = render(<MarkdownRenderer text={"```ts\nconst x = 1;\n```"} />);
     expect(container.querySelector('pre')).toBeTruthy();
     expect(container.querySelector('code')?.textContent).toContain('const x = 1;');
   });

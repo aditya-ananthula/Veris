@@ -75,7 +75,8 @@ def init_db(path=None):
 
 def _load_facts(session_id: str, path=None) -> List[Dict[str, Any]]:
     """Load all validated/uncertain facts for a session, keyed for comparison."""
-    return intel_store.search_facts(session_id, path=path, limit=1000)
+    with intel_store._connect(path) as conn:
+        return [dict(r) for r in conn.execute("SELECT f.*, d.filename FROM facts f JOIN documents d ON f.doc_id=d.doc_id WHERE f.session_id=? AND f.status='validated' AND d.status!='superseded'", (session_id,))]
 
 
 def _group_by_subject_attribute(facts: List[Dict[str, Any]]) -> Dict[Tuple[str, str], List[Dict[str, Any]]]:

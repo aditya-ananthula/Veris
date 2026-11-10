@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MessageBubble } from './components/MessageBubble';
+import { MemoryRouter } from 'react-router-dom';
 
 describe('MessageBubble', () => {
   beforeEach(() => {
@@ -14,7 +15,7 @@ describe('MessageBubble', () => {
 
   it('renders assistant answer with evidence count', () => {
     render(
-      <MessageBubble
+      <MemoryRouter><MessageBubble
         msg={{
           id: '2',
           role: 'assistant',
@@ -22,11 +23,13 @@ describe('MessageBubble', () => {
           sources: ['passage one', 'passage two'],
           validation: 'VERDICT: SUPPORTED\nREASONING: ok',
         }}
-      />,
+      /></MemoryRouter>,
     );
     expect(screen.getByText('Cited evidence')).toBeDefined();
     expect(screen.getAllByText('2').length).toBeGreaterThan(0);
     expect(screen.getByText(/The doc says/)).toBeDefined();
+    fireEvent.click(screen.getByText('Cited evidence'));
+    expect(screen.getByRole('link', { name: 'Open source passage 1' }).getAttribute('href')).toBe('/knowledge/chunks?q=passage%20one');
   });
 
   it('flags unsupported validation', () => {
